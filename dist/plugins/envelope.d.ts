@@ -74,6 +74,9 @@ declare class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePl
     private emitPoints;
     private initPolyline;
     private addPolyPoint;
+    private onZoomChange;
+    private onScrollChange;
+    private getViewportInfo;
     private onTimeUpdate;
 }
 export default EnvelopePlugin;

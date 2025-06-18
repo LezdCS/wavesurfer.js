@@ -56,6 +56,8 @@ class Polyline extends EventEmitter<{
     }
   >
   private subscriptions: (() => void)[] = []
+  private wrapper: HTMLElement
+  private updateThrottleTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: Options, wrapper: HTMLElement) {
     super()
@@ -63,6 +65,7 @@ class Polyline extends EventEmitter<{
     this.subscriptions = []
     this.options = options
     this.polyPoints = new Map()
+    this.wrapper = wrapper
 
     const width = wrapper.clientWidth
     const height = wrapper.clientHeight
@@ -164,6 +167,94 @@ class Polyline extends EventEmitter<{
     }
   }
 
+  // New method to get current viewport info for zoom compatibility
+  private getViewportInfo(wavesurfer: any) {
+    if (!wavesurfer) return null
+    
+    const duration = wavesurfer.getDuration() || 0
+    const scrollTime = wavesurfer.getScroll() / (wavesurfer.options.minPxPerSec || 1)
+    const viewportWidth = this.wrapper.clientWidth
+    const viewportDuration = viewportWidth / (wavesurfer.options.minPxPerSec || 1)
+    
+    return {
+      startTime: scrollTime,
+      endTime: Math.min(duration, scrollTime + viewportDuration),
+      duration: viewportDuration,
+      totalDuration: duration,
+      minPxPerSec: wavesurfer.options.minPxPerSec || 1
+    }
+  }
+
+  // New method to update SVG viewBox based on zoom and scroll
+  updateViewBox(wavesurfer: any) {
+    if (this.updateThrottleTimeout) {
+      clearTimeout(this.updateThrottleTimeout)
+    }
+    
+    this.updateThrottleTimeout = setTimeout(() => {
+      const viewport = this.getViewportInfo(wavesurfer)
+      if (!viewport) return
+
+      const { svg } = this
+      const currentWidth = this.wrapper.clientWidth
+      const currentHeight = this.wrapper.clientHeight
+      
+      // Update viewBox to current dimensions
+      svg.setAttribute('viewBox', `0 0 ${currentWidth} ${currentHeight}`)
+      
+      // Update polyline base points (start and end)
+      const polyline = svg.querySelector('polyline') as SVGPolylineElement
+      if (polyline) {
+        const points = polyline.points
+        if (points.numberOfItems >= 2) {
+          // Update first point (start)
+          const firstPoint = points.getItem(0)
+          firstPoint.x = 0
+          firstPoint.y = currentHeight
+          
+          // Update last point (end) only if there are no user points in between
+          const lastPoint = points.getItem(points.numberOfItems - 1)
+          lastPoint.x = currentWidth
+          lastPoint.y = currentHeight
+        }
+      }
+      
+      this.updatePointsForViewport(wavesurfer)
+    }, 16) // ~60fps throttling
+  }
+
+  // New method to update point positions based on current viewport
+  private updatePointsForViewport(wavesurfer: any) {
+    const viewport = this.getViewportInfo(wavesurfer)
+    if (!viewport) return
+
+    const { svg } = this
+    const currentWidth = this.wrapper.clientWidth
+    const currentHeight = this.wrapper.clientHeight
+    
+    this.polyPoints.forEach(({ polyPoint, circle }, envelopePoint) => {
+      // Convert audio time to viewport relative position
+      const relativeTime = (envelopePoint.time - viewport.startTime) / viewport.duration
+      
+      // Only update if point is within viewport
+      if (relativeTime >= 0 && relativeTime <= 1) {
+        const x = relativeTime * currentWidth
+        const y = currentHeight - (envelopePoint.volume * currentHeight)
+        
+        polyPoint.x = x
+        polyPoint.y = y
+        circle.setAttribute('cx', x.toString())
+        circle.setAttribute('cy', y.toString())
+        
+        // Show the circle
+        circle.style.display = 'block'
+      } else {
+        // Hide points outside viewport
+        circle.style.display = 'none'
+      }
+    })
+  }
+
   private makeDraggable(draggable: SVGElement, onDrag: (x: number, y: number) => void) {
     this.subscriptions.push(
       makeDraggable(
@@ -206,21 +297,43 @@ class Polyline extends EventEmitter<{
     const { polyPoint, circle } = item
     const { points } = this.svg.querySelector('polyline') as SVGPolylineElement
     const index = Array.from(points).findIndex((p) => p.x === polyPoint.x && p.y === polyPoint.y)
-    points.removeItem(index)
+    if (index >= 0) {
+      points.removeItem(index)
+    }
     circle.remove()
     this.polyPoints.delete(point)
   }
 
-  addPolyPoint(relX: number, relY: number, refPoint: EnvelopePoint) {
+  addPolyPoint(relX: number, relY: number, refPoint: EnvelopePoint, wavesurfer?: any) {
     const { svg } = this
-    const { width, height } = svg.viewBox.baseVal
-    const x = relX * width
-    const y = height - relY * height
+    const currentWidth = this.wrapper.clientWidth
+    const currentHeight = this.wrapper.clientHeight
     const threshold = this.options.dragPointSize / 2
 
+    // For zoom compatibility, we need to consider the current viewport
+    let x: number, y: number
+    
+    if (wavesurfer) {
+      const viewport = this.getViewportInfo(wavesurfer)
+      if (viewport) {
+        // Convert from audio time to current viewport position
+        const relativeTime = (refPoint.time - viewport.startTime) / viewport.duration
+        x = relativeTime * currentWidth
+        y = currentHeight - (refPoint.volume * currentHeight)
+      } else {
+        // Fallback to original calculation
+        x = relX * currentWidth
+        y = currentHeight - relY * currentHeight
+      }
+    } else {
+      // Original calculation for backward compatibility
+      x = relX * currentWidth
+      y = currentHeight - relY * currentHeight
+    }
+
     const newPoint = svg.createSVGPoint()
-    newPoint.x = relX * width
-    newPoint.y = height - relY * height
+    newPoint.x = x
+    newPoint.y = y
 
     const circle = this.createCircle(x, y)
     const { points } = svg.querySelector('polyline') as SVGPolylineElement
@@ -234,7 +347,7 @@ class Polyline extends EventEmitter<{
       const newY = newPoint.y + dy
 
       // Remove the point if it's dragged out of the SVG
-      if (newX < -threshold || newY < -threshold || newX > width + threshold || newY > height + threshold) {
+      if (newX < -threshold || newY < -threshold || newX > currentWidth + threshold || newY > currentHeight + threshold) {
         this.emit('point-dragout', refPoint)
         return
       }
@@ -253,7 +366,25 @@ class Polyline extends EventEmitter<{
       circle.setAttribute('cy', newY.toString())
 
       // Emit the event passing the point and new relative coordinates
-      this.emit('point-move', refPoint, newX / width, newY / height)
+      // For zoom compatibility, convert back to audio time coordinates
+      if (wavesurfer) {
+        const viewport = this.getViewportInfo(wavesurfer)
+        if (viewport) {
+          const relativeViewportX = newX / currentWidth
+          const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
+          const volume = 1 - (newY / currentHeight)
+          
+          // Update the reference point with audio coordinates
+          refPoint.time = audioTime
+          refPoint.volume = volume
+          
+          this.emit('point-move', refPoint, audioTime / viewport.totalDuration, newY / currentHeight)
+          return
+        }
+      }
+      
+      // Fallback to original behavior
+      this.emit('point-move', refPoint, newX / currentWidth, newY / currentHeight)
     })
   }
 
@@ -273,6 +404,9 @@ class Polyline extends EventEmitter<{
   }
 
   destroy() {
+    if (this.updateThrottleTimeout) {
+      clearTimeout(this.updateThrottleTimeout)
+    }
     this.subscriptions.forEach((unsubscribe) => unsubscribe())
     this.polyPoints.clear()
     this.svg.remove()
@@ -403,6 +537,16 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
       this.wavesurfer.on('timeupdate', (time) => {
         this.onTimeUpdate(time)
       }),
+
+      // Add zoom event handler for zoom compatibility
+      this.wavesurfer.on('zoom', (minPxPerSec) => {
+        this.onZoomChange(minPxPerSec)
+      }),
+
+      // Add scroll event handler for zoom compatibility
+      this.wavesurfer.on('scroll', (visibleStartTime, visibleEndTime) => {
+        this.onScrollChange(visibleStartTime, visibleEndTime)
+      }),
     )
   }
 
@@ -437,8 +581,23 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
       }),
 
       this.polyline.on('point-create', (relativeX, relativeY) => {
+        // For zoom compatibility, convert viewport coordinates to audio time
+        const duration = this.wavesurfer?.getDuration() || 0
+        let audioTime: number
+        
+        if (this.wavesurfer) {
+          const viewport = this.getViewportInfo()
+          if (viewport) {
+            audioTime = viewport.startTime + (relativeX * viewport.duration)
+          } else {
+            audioTime = relativeX * duration
+          }
+        } else {
+          audioTime = relativeX * duration
+        }
+        
         this.addPoint({
-          time: relativeX * (this.wavesurfer?.getDuration() || 0),
+          time: audioTime,
           volume: 1 - relativeY,
         })
       }),
@@ -456,7 +615,36 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   }
 
   private addPolyPoint(point: EnvelopePoint, duration: number) {
-    this.polyline?.addPolyPoint(point.time / duration, point.volume, point)
+    this.polyline?.addPolyPoint(point.time / duration, point.volume, point, this.wavesurfer)
+  }
+
+  private onZoomChange(minPxPerSec: number) {
+    // Update the polyline to handle zoom changes
+    this.polyline?.updateViewBox(this.wavesurfer)
+  }
+
+  private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
+    // Update the polyline to handle scroll changes
+    this.polyline?.updateViewBox(this.wavesurfer)
+  }
+
+  // Helper method to get current viewport info for zoom compatibility
+  private getViewportInfo() {
+    if (!this.wavesurfer) return null
+    
+    const duration = this.wavesurfer.getDuration() || 0
+    const scrollTime = this.wavesurfer.getScroll() / (this.wavesurfer.options.minPxPerSec || 1)
+    const wrapper = this.wavesurfer.getWrapper()
+    const viewportWidth = wrapper.clientWidth
+    const viewportDuration = viewportWidth / (this.wavesurfer.options.minPxPerSec || 1)
+    
+    return {
+      startTime: scrollTime,
+      endTime: Math.min(duration, scrollTime + viewportDuration),
+      duration: viewportDuration,
+      totalDuration: duration,
+      minPxPerSec: this.wavesurfer.options.minPxPerSec || 1
+    }
   }
 
   private onTimeUpdate(time: number) {
