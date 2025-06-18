@@ -172,23 +172,16 @@ class Polyline extends EventEmitter<{
     if (!wavesurfer) return null
     
     const duration = wavesurfer.getDuration() || 0
-    const scrollLeft = wavesurfer.getScroll() // in pixels
-    const wrapper = wavesurfer.getWrapper()
-    const waveformWidth = wrapper.scrollWidth // total waveform width in pixels
-    const viewportWidth = wrapper.clientWidth // visible width in pixels
-    
-    // Convert scroll position to time
-    const scrollTime = (scrollLeft / waveformWidth) * duration
-    const viewportDuration = (viewportWidth / waveformWidth) * duration
+    const scrollTime = wavesurfer.getScroll() / (wavesurfer.options.minPxPerSec || 1)
+    const viewportWidth = this.wrapper.clientWidth
+    const viewportDuration = viewportWidth / (wavesurfer.options.minPxPerSec || 1)
     
     return {
       startTime: scrollTime,
       endTime: Math.min(duration, scrollTime + viewportDuration),
       duration: viewportDuration,
       totalDuration: duration,
-      scrollLeft: scrollLeft,
-      waveformWidth: waveformWidth,
-      viewportWidth: viewportWidth
+      minPxPerSec: wavesurfer.options.minPxPerSec || 1
     }
   }
 
@@ -240,29 +233,23 @@ class Polyline extends EventEmitter<{
     const currentHeight = this.wrapper.clientHeight
     
     this.polyPoints.forEach(({ polyPoint, circle }, envelopePoint) => {
-      // Calculate the absolute position of the point in the waveform
-      const duration = wavesurfer.getDuration() || 0
-      const waveformWidth = wavesurfer.getWrapper().scrollWidth
-      const absoluteX = (envelopePoint.time / duration) * waveformWidth
+      // Convert audio time to viewport relative position
+      const relativeTime = (envelopePoint.time - viewport.startTime) / viewport.duration
       
-      // Get the current scroll position
-      const scrollLeft = wavesurfer.getScroll()
-      
-      // Calculate the position relative to the current viewport
-      const viewportX = absoluteX - scrollLeft
-      const y = currentHeight - (envelopePoint.volume * currentHeight)
-      
-      // Only show/position if point is within or near the viewport
-      if (viewportX >= -50 && viewportX <= currentWidth + 50) {
-        polyPoint.x = viewportX
+      // Only update if point is within viewport
+      if (relativeTime >= 0 && relativeTime <= 1) {
+        const x = relativeTime * currentWidth
+        const y = currentHeight - (envelopePoint.volume * currentHeight)
+        
+        polyPoint.x = x
         polyPoint.y = y
-        circle.setAttribute('cx', viewportX.toString())
+        circle.setAttribute('cx', x.toString())
         circle.setAttribute('cy', y.toString())
         
         // Show the circle
         circle.style.display = 'block'
       } else {
-        // Hide points outside viewport (with some margin)
+        // Hide points outside viewport
         circle.style.display = 'none'
       }
     })
@@ -323,21 +310,21 @@ class Polyline extends EventEmitter<{
     const currentHeight = this.wrapper.clientHeight
     const threshold = this.options.dragPointSize / 2
 
-    // Calculate position using the same coordinate system as updatePointsForViewport
+    // For zoom compatibility, we need to consider the current viewport
     let x: number, y: number
     
     if (wavesurfer) {
-      // Calculate the absolute position of the point in the waveform
-      const duration = wavesurfer.getDuration() || 0
-      const waveformWidth = wavesurfer.getWrapper().scrollWidth
-      const absoluteX = (refPoint.time / duration) * waveformWidth
-      
-      // Get the current scroll position
-      const scrollLeft = wavesurfer.getScroll()
-      
-      // Calculate the position relative to the current viewport
-      x = absoluteX - scrollLeft
-      y = currentHeight - (refPoint.volume * currentHeight)
+      const viewport = this.getViewportInfo(wavesurfer)
+      if (viewport) {
+        // Convert from audio time to current viewport position
+        const relativeTime = (refPoint.time - viewport.startTime) / viewport.duration
+        x = relativeTime * currentWidth
+        y = currentHeight - (refPoint.volume * currentHeight)
+      } else {
+        // Fallback to original calculation
+        x = relX * currentWidth
+        y = currentHeight - relY * currentHeight
+      }
     } else {
       // Original calculation for backward compatibility
       x = relX * currentWidth
@@ -378,24 +365,22 @@ class Polyline extends EventEmitter<{
       circle.setAttribute('cx', newX.toString())
       circle.setAttribute('cy', newY.toString())
 
-      // Convert viewport position back to audio time
+      // Emit the event passing the point and new relative coordinates
+      // For zoom compatibility, convert back to audio time coordinates
       if (wavesurfer) {
-        const duration = wavesurfer.getDuration() || 0
-        const waveformWidth = wavesurfer.getWrapper().scrollWidth
-        const scrollLeft = wavesurfer.getScroll()
-        
-        // Convert viewport position to absolute waveform position
-        const absoluteX = newX + scrollLeft
-        const audioTime = (absoluteX / waveformWidth) * duration
-        const volume = 1 - (newY / currentHeight)
-        
-        // Update the reference point with audio coordinates
-        refPoint.time = audioTime
-        refPoint.volume = volume
-        
-        // Emit with the global relative position (0-1 across the entire audio)
-        this.emit('point-move', refPoint, audioTime / duration, newY / currentHeight)
-        return
+        const viewport = this.getViewportInfo(wavesurfer)
+        if (viewport) {
+          const relativeViewportX = newX / currentWidth
+          const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
+          const volume = 1 - (newY / currentHeight)
+          
+          // Update the reference point with audio coordinates
+          refPoint.time = audioTime
+          refPoint.volume = volume
+          
+          this.emit('point-move', refPoint, audioTime / viewport.totalDuration, newY / currentHeight)
+          return
+        }
       }
       
       // Fallback to original behavior
@@ -634,23 +619,13 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   }
 
   private onZoomChange(minPxPerSec: number) {
-    // Update the polyline to handle zoom changes with debouncing
-    if (this.throttleTimeout) {
-      clearTimeout(this.throttleTimeout)
-    }
-    this.throttleTimeout = setTimeout(() => {
-      this.polyline?.updateViewBox(this.wavesurfer)
-    }, 50) // Slightly longer delay for zoom to settle
+    // Update the polyline to handle zoom changes
+    this.polyline?.updateViewBox(this.wavesurfer)
   }
 
   private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
-    // Update the polyline to handle scroll changes with debouncing
-    if (this.throttleTimeout) {
-      clearTimeout(this.throttleTimeout)
-    }
-    this.throttleTimeout = setTimeout(() => {
-      this.polyline?.updateViewBox(this.wavesurfer)
-    }, 16) // ~60fps for scroll
+    // Update the polyline to handle scroll changes
+    this.polyline?.updateViewBox(this.wavesurfer)
   }
 
   // Helper method to get current viewport info for zoom compatibility
@@ -658,23 +633,17 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     if (!this.wavesurfer) return null
     
     const duration = this.wavesurfer.getDuration() || 0
-    const scrollLeft = this.wavesurfer.getScroll() // in pixels
+    const scrollTime = this.wavesurfer.getScroll() / (this.wavesurfer.options.minPxPerSec || 1)
     const wrapper = this.wavesurfer.getWrapper()
-    const waveformWidth = wrapper.scrollWidth // total waveform width in pixels
-    const viewportWidth = wrapper.clientWidth // visible width in pixels
-    
-    // Convert scroll position to time
-    const scrollTime = (scrollLeft / waveformWidth) * duration
-    const viewportDuration = (viewportWidth / waveformWidth) * duration
+    const viewportWidth = wrapper.clientWidth
+    const viewportDuration = viewportWidth / (this.wavesurfer.options.minPxPerSec || 1)
     
     return {
       startTime: scrollTime,
       endTime: Math.min(duration, scrollTime + viewportDuration),
       duration: viewportDuration,
       totalDuration: duration,
-      scrollLeft: scrollLeft,
-      waveformWidth: waveformWidth,
-      viewportWidth: viewportWidth
+      minPxPerSec: this.wavesurfer.options.minPxPerSec || 1
     }
   }
 
