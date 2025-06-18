@@ -421,7 +421,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       this.createCanvas()
     }
 
-    this.container = this.container || this.wavesurfer.getWrapper()
+    // Always get fresh container reference to avoid stale references
+    this.container = this.wavesurfer.getWrapper()
     this.container.appendChild(this.wrapper)
 
     if (this.wavesurfer.options.fillParent) {
@@ -477,7 +478,10 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       this.labelsEl = null
     }
     
-    // Clean up all references for garbage collection
+    // Reset state for potential re-initialization
+    this.container = null
+    this.isRendering = false
+    this.lastZoomLevel = 0
     this.wavesurfer = null
     this.util = null
     this.options = null
