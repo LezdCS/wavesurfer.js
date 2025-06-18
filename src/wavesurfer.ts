@@ -243,6 +243,8 @@ class WaveSurfer extends Player<WaveSurferEvents> {
       this.onMediaEvent('play', () => {
         this.emit('play')
         this.timer.start()
+        // Immediately sync the progress to avoid timing jumps
+        this.updateProgress()
       }),
 
       this.onMediaEvent('pause', () => {
