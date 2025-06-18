@@ -25,10 +25,6 @@ const spectrogram = SpectrogramPlugin.create({
   performanceMode: true,
   // You can disable it if you prefer the original behavior
   // performanceMode: false,
-  
-  // Prevent crashes at high zoom levels
-  maxCanvasWidth: 16384, // Maximum canvas width (default: 16384)
-  maxZoomLevel: 50000,   // Maximum zoom level in px/sec (default: 50000)
 })
 
 wavesurfer.registerPlugin(spectrogram)
@@ -94,9 +90,6 @@ wavesurfer.on('zoom', (minPxPerSec) => {
     <li><strong>Render Throttling:</strong> Rendering is throttled to ~60fps</li>
     <li><strong>Smart Resampling:</strong> Optimized resampling algorithms</li>
     <li><strong>Zoom Threshold:</strong> Small zoom changes use cached data</li>
-    <li><strong>Canvas Size Limits:</strong> Prevents crashes at extreme zoom levels</li>
-    <li><strong>Fallback Rendering:</strong> Graceful degradation when memory limits are hit</li>
-    <li><strong>Automatic Cleanup:</strong> ImageBitmap resources are properly disposed</li>
   </ul>
 </html>
 */ 
