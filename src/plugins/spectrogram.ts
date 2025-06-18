@@ -293,6 +293,10 @@ export type SpectrogramPluginOptions = {
   frequenciesDataUrl?: string
   /** Enable performance optimizations for large files (caching, throttling). Default: true */
   performanceMode?: boolean
+  /** Maximum canvas width to prevent crashes at high zoom levels. Default: 16384 */
+  maxCanvasWidth?: number
+  /** Maximum zoom level (pixels per second) for spectrogram rendering. Default: 50000 */
+  maxZoomLevel?: number
 }
 
 export type SpectrogramPluginEvents = BasePluginEvents & {
@@ -331,6 +335,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   private lastZoomLevel = 0
   private renderThrottleMs = 16 // ~60fps
   private zoomThreshold = 0.1 // Only re-render if zoom changes significantly
+  private activeBitmaps: ImageBitmap[] = [] // Track active bitmaps for cleanup
+  private maxCanvasWidth: number // Maximum canvas width to prevent crashes
+  private maxZoomLevel: number // Maximum zoom level for spectrogram
 
   static create(options?: SpectrogramPluginOptions) {
     return new SpectrogramPlugin(options || {})
@@ -343,6 +350,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     
     // Performance optimizations enabled by default
     const performanceMode = options.performanceMode !== false
+    this.maxCanvasWidth = options.maxCanvasWidth || 16384
+    this.maxZoomLevel = options.maxZoomLevel || 50000
 
     // Validate that sampleRate is provided when using frequenciesDataUrl
     if (this.frequenciesDataUrl && !options.sampleRate) {
@@ -441,6 +450,7 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
+    this.cleanupBitmaps()
     this.cachedFrequencies = null
     this.cachedBuffer = null
     
@@ -465,9 +475,20 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
   /** Clear cached frequency data to force recalculation */
   public clearCache() {
+    this.cleanupBitmaps()
     this.cachedFrequencies = null
     this.cachedBuffer = null
     this.lastZoomLevel = 0
+  }
+
+  /** Clean up ImageBitmap resources to prevent memory leaks */
+  private cleanupBitmaps() {
+    this.activeBitmaps.forEach(bitmap => {
+      if (bitmap && typeof bitmap.close === 'function') {
+        bitmap.close()
+      }
+    })
+    this.activeBitmaps = []
   }
 
   private createWrapper() {
@@ -593,15 +614,39 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       frequenciesData = [frequenciesData]
     }
 
+    // Check if zoom level is too high
+    const currentZoom = this.wavesurfer?.options.minPxPerSec || 0
+    if (currentZoom > this.maxZoomLevel) {
+      console.warn(`Spectrogram: Zoom level too high (${currentZoom} > ${this.maxZoomLevel}), skipping render to prevent crashes`)
+      // Clear the canvas to show that spectrogram is disabled at this zoom level
+      if (this.spectrCc) {
+        this.spectrCc.clearRect(0, 0, this.canvas.width, this.canvas.height)
+        this.spectrCc.fillStyle = 'rgba(0, 0, 0, 0.1)'
+        this.spectrCc.fillRect(0, 0, this.canvas.width, this.canvas.height)
+        this.spectrCc.fillStyle = 'rgba(255, 255, 255, 0.8)'
+        this.spectrCc.font = '14px Arial'
+        this.spectrCc.textAlign = 'center'
+        this.spectrCc.fillText('Zoom level too high for spectrogram', this.canvas.width / 2, this.canvas.height / 2)
+      }
+      return
+    }
+
     // Set the height to fit all channels
     this.wrapper.style.height = this.height * frequenciesData.length + 'px'
 
-    this.canvas.width = this.getWidth()
-    this.canvas.height = this.height * frequenciesData.length
+    const width = this.getWidth()
+    const height = this.height
+    
+    // Safety check: prevent crashes with invalid dimensions
+    if (width <= 0 || height <= 0 || width > this.maxCanvasWidth) {
+      console.warn(`Spectrogram: Invalid canvas dimensions (${width}x${height}), skipping render`)
+      return
+    }
+
+    this.canvas.width = width
+    this.canvas.height = height * frequenciesData.length
 
     const spectrCc = this.spectrCc
-    const height = this.height
-    const width = this.getWidth()
 
     // Maximum frequency represented in `frequenciesData`
     // Use buffer.sampleRate if available (from getFrequencies), otherwise use the provided sampleRate
@@ -626,7 +671,23 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       // for each channel
       const pixels = this.resample(frequenciesData[c])
       const bitmapHeight = pixels[0].length
-      const imageData = new ImageData(width, bitmapHeight)
+      
+      // Safety check for ImageData creation
+      if (width * bitmapHeight * 4 > 268435456) { // 256MB limit
+        console.warn(`Spectrogram: ImageData too large (${width}x${bitmapHeight}), using fallback rendering`)
+        this.drawSpectrogramFallback(pixels, width, bitmapHeight, height, c, spectrCc, freqMin, freqMax, freqFrom)
+        continue
+      }
+
+      let imageData: ImageData
+      try {
+        imageData = new ImageData(width, bitmapHeight)
+      } catch (error) {
+        console.warn(`Spectrogram: Failed to create ImageData (${width}x${bitmapHeight}), using fallback:`, error)
+        this.drawSpectrogramFallback(pixels, width, bitmapHeight, height, c, spectrCc, freqMin, freqMax, freqFrom)
+        continue
+      }
+
       const data = imageData.data
 
       // Optimized pixel writing with batch operations
@@ -652,16 +713,28 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       // Only relevant if `freqMax > freqFrom`
       const rMax1 = Math.min(1, rMax)
 
-      // Crop, scale and stack spectrograms
-      createImageBitmap(
-        imageData,
-        0,
-        Math.round(bitmapHeight * (1 - rMax1)),
-        width,
-        Math.round(bitmapHeight * (rMax1 - rMin)),
-      ).then((bitmap) => {
-        spectrCc.drawImage(bitmap, 0, height * (c + 1 - rMax1 / rMax), width, (height * rMax1) / rMax)
-      })
+      // Crop, scale and stack spectrograms with error handling
+      try {
+        createImageBitmap(
+          imageData,
+          0,
+          Math.round(bitmapHeight * (1 - rMax1)),
+          width,
+          Math.round(bitmapHeight * (rMax1 - rMin)),
+        ).then((bitmap) => {
+          spectrCc.drawImage(bitmap, 0, height * (c + 1 - rMax1 / rMax), width, (height * rMax1) / rMax)
+          // Clean up bitmap after use
+          if (bitmap && typeof bitmap.close === 'function') {
+            setTimeout(() => bitmap.close(), 100)
+          }
+        }).catch((error) => {
+          console.warn('Spectrogram: Failed to create bitmap:', error)
+          this.drawSpectrogramFallback(pixels, width, bitmapHeight, height, c, spectrCc, freqMin, freqMax, freqFrom)
+        })
+      } catch (error) {
+        console.warn('Spectrogram: Failed to create bitmap:', error)
+        this.drawSpectrogramFallback(pixels, width, bitmapHeight, height, c, spectrCc, freqMin, freqMax, freqFrom)
+      }
     }
 
     if (this.options.labels) {
@@ -679,6 +752,72 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     }
 
     this.emit('ready')
+  }
+
+  /** Fallback rendering method for when ImageBitmap creation fails */
+  private drawSpectrogramFallback(
+    pixels: Uint8Array[],
+    width: number,
+    bitmapHeight: number,
+    height: number,
+    channelIndex: number,
+    ctx: CanvasRenderingContext2D,
+    freqMin: number,
+    freqMax: number,
+    freqFrom: number
+  ) {
+    // Calculate frequency range scaling
+    const rMin = this.hzToScale(freqMin) / this.hzToScale(freqFrom)
+    const rMax = this.hzToScale(freqMax) / this.hzToScale(freqFrom)
+    const rMax1 = Math.min(1, rMax)
+    
+    // Draw pixels directly to canvas using putImageData in chunks
+    const chunkSize = 1000 // Process in smaller chunks to avoid blocking
+    const yOffset = height * channelIndex
+    const scaleY = (height * rMax1) / rMax / bitmapHeight
+    const startY = Math.round(bitmapHeight * (1 - rMax1))
+    const endY = Math.round(bitmapHeight * (rMax1 - rMin))
+    
+    for (let i = 0; i < pixels.length; i += chunkSize) {
+      const endI = Math.min(i + chunkSize, pixels.length)
+      const chunkWidth = endI - i
+      
+      if (chunkWidth <= 0) continue
+      
+      try {
+        const chunkImageData = new ImageData(chunkWidth, endY - startY)
+        const data = chunkImageData.data
+        
+        for (let x = 0; x < chunkWidth; x++) {
+          const column = pixels[i + x]
+          for (let y = startY; y < endY; y++) {
+            const colorIndex = column[y]
+            const colorMap = this.colorMap[colorIndex]
+            const pixelIndex = ((endY - startY - 1 - (y - startY)) * chunkWidth + x) * 4
+            
+            data[pixelIndex] = colorMap[0] * 255
+            data[pixelIndex + 1] = colorMap[1] * 255
+            data[pixelIndex + 2] = colorMap[2] * 255
+            data[pixelIndex + 3] = colorMap[3] * 255
+          }
+        }
+        
+        // Draw the chunk to canvas
+        ctx.putImageData(chunkImageData, i, yOffset)
+      } catch (error) {
+        console.warn('Spectrogram fallback: Failed to create chunk ImageData:', error)
+        // Last resort: draw individual pixels
+        for (let x = i; x < endI; x++) {
+          const column = pixels[x]
+          for (let y = startY; y < endY; y++) {
+            const colorIndex = column[y]
+            const colorMap = this.colorMap[colorIndex]
+            ctx.fillStyle = `rgba(${colorMap[0] * 255}, ${colorMap[1] * 255}, ${colorMap[2] * 255}, ${colorMap[3]})`
+            ctx.fillRect(x, yOffset + (endY - y - 1) * scaleY, 1, Math.max(1, scaleY))
+          }
+        }
+      }
+    }
   }
 
   private createFilterBank(
@@ -808,7 +947,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   }
 
   private getWidth() {
-    return this.wavesurfer.getWrapper().offsetWidth
+    const wrapperWidth = this.wavesurfer.getWrapper().offsetWidth
+    // Limit canvas width to prevent crashes at high zoom levels
+    return Math.min(wrapperWidth, this.maxCanvasWidth)
   }
 
   private getFrequencies(buffer: AudioBuffer): Uint8Array[][] {
