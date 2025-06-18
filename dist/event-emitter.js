@@ -8,15 +8,15 @@ class EventEmitter {
         if (!this.listeners[event]) {
             this.listeners[event] = new Set();
         }
-        if (options === null || options === void 0 ? void 0 : options.once) {
-            const onceWrapper = (...args) => {
-                this.un(event, onceWrapper);
-                listener(...args);
-            };
-            this.listeners[event].add(onceWrapper);
-            return () => this.un(event, onceWrapper);
-        }
         this.listeners[event].add(listener);
+        if (options === null || options === void 0 ? void 0 : options.once) {
+            const unsubscribeOnce = () => {
+                this.un(event, unsubscribeOnce);
+                this.un(event, listener);
+            };
+            this.on(event, unsubscribeOnce);
+            return unsubscribeOnce;
+        }
         return () => this.un(event, listener);
     }
     /** Unsubscribe from an event */
