@@ -214,6 +214,10 @@ class WaveSurfer extends Player {
     }
     /** Register a wavesurfer.js plugin */
     registerPlugin(plugin) {
+        // Check if the plugin is already registered
+        if (this.plugins.includes(plugin)) {
+            return plugin;
+        }
         plugin._init(this);
         this.plugins.push(plugin);
         // Unregister plugin on destroy
@@ -226,6 +230,10 @@ class WaveSurfer extends Player {
     unregisterPlugin(plugin) {
         this.plugins = this.plugins.filter((p) => p !== plugin);
         plugin.destroy();
+    }
+    /** Remove a wavesurfer.js plugin without destroying it (allows re-registration) */
+    removePlugin(plugin) {
+        this.plugins = this.plugins.filter((p) => p !== plugin);
     }
     /** For plugins only: get the waveform wrapper div */
     getWrapper() {
