@@ -95,6 +95,9 @@ class Polyline extends EventEmitter<{
 
     this.svg = svg
 
+    // Setup DOM observer to detect when spectrogram is added
+    this.setupDOMObserver()
+
     // A polyline representing the envelope
     const polyline = createElement(
       'polyline',
@@ -202,8 +205,18 @@ class Polyline extends EventEmitter<{
       }
     })
 
-    // If we couldn't find the parent, fall back to a reasonable default
-    return spectrogramHeight || 200
+    // If we couldn't find the parent, fall back to checking the wrapper for spectrogram elements
+    if (spectrogramHeight === 0) {
+      // Look for any canvas elements that might be spectrograms
+      const canvases = wrapper.querySelectorAll('canvas')
+      canvases.forEach((canvas) => {
+        if (canvas.style.zIndex === '4') { // Spectrogram canvas has zIndex 4
+          spectrogramHeight = Math.max(spectrogramHeight, canvas.offsetHeight)
+        }
+      })
+    }
+
+    return spectrogramHeight
   }
 
   // New method to get current viewport info for zoom compatibility
@@ -264,6 +277,77 @@ class Polyline extends EventEmitter<{
       
       this.updatePointsForViewport(wavesurfer)
     }, 16) // ~60fps throttling
+  }
+
+  // New method to recalculate position when DOM changes (e.g., spectrogram added)
+  private setupDOMObserver() {
+    if (!this.wrapper) return
+
+    // Create a MutationObserver to watch for DOM changes
+    const observer = new MutationObserver((mutations) => {
+      let needsReposition = false
+      
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          // Check if spectrogram elements were added
+          mutation.addedNodes.forEach((node) => {
+            if (node instanceof HTMLElement) {
+              if (node.querySelector('[part="spec-labels"]') || 
+                  node.querySelector('canvas[style*="z-index: 4"]') ||
+                  node.hasAttribute('part') && node.getAttribute('part') === 'spec-labels') {
+                needsReposition = true
+              }
+            }
+          })
+        }
+      })
+      
+      if (needsReposition) {
+        // Delay to ensure DOM is fully updated
+        setTimeout(() => {
+          this.repositionEnvelope()
+        }, 100)
+      }
+    })
+
+    observer.observe(this.wrapper, {
+      childList: true,
+      subtree: true
+    })
+
+    // Store observer for cleanup
+    this.subscriptions.push(() => observer.disconnect())
+  }
+
+  // New method to reposition envelope when spectrogram changes
+  private repositionEnvelope() {
+    const { svg } = this
+    const currentHeight = this.getAvailableHeight(this.wrapper)
+    const spectrogramOffset = this.getSpectrogramOffset(this.wrapper)
+    
+    // Update SVG position and size
+    svg.style.top = `${spectrogramOffset}px`
+    svg.style.height = `${currentHeight}px`
+    svg.setAttribute('viewBox', `0 0 ${this.wrapper.clientWidth} ${currentHeight}`)
+    
+    // Update polyline base points
+    const polyline = svg.querySelector('polyline') as SVGPolylineElement
+    if (polyline) {
+      const points = polyline.points
+      if (points.numberOfItems >= 2) {
+        const firstPoint = points.getItem(0)
+        const lastPoint = points.getItem(points.numberOfItems - 1)
+        firstPoint.y = currentHeight
+        lastPoint.y = currentHeight
+      }
+    }
+    
+    // Update all circle positions
+    this.polyPoints.forEach(({ polyPoint, circle }, envelopePoint) => {
+      const newY = currentHeight - (envelopePoint.volume * currentHeight)
+      polyPoint.y = newY
+      circle.setAttribute('cy', newY.toString())
+    })
   }
 
   // New method to update point positions based on current viewport
@@ -353,7 +437,6 @@ class Polyline extends EventEmitter<{
     const { svg } = this
     const currentWidth = this.wrapper.clientWidth
     const currentHeight = this.getAvailableHeight(this.wrapper)
-    const threshold = this.options.dragPointSize / 2
 
     // For zoom compatibility, we need to consider the current viewport
     let x: number, y: number
@@ -389,13 +472,7 @@ class Polyline extends EventEmitter<{
 
     this.makeDraggable(circle, (dx, dy) => {
       const newX = newPoint.x + dx
-      const newY = newPoint.y + dy
-
-      // Remove the point if it's dragged out of the SVG
-      if (newX < -threshold || newY < -threshold || newX > currentWidth + threshold || newY > currentHeight + threshold) {
-        this.emit('point-dragout', refPoint)
-        return
-      }
+      const newY = Math.max(0, Math.min(currentHeight, newPoint.y + dy)) // Clamp Y within bounds
 
       // Don't allow to drag past the next or previous point
       const next = Array.from(points).find((point) => point.x > newPoint.x)
