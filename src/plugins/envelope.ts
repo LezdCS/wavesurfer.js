@@ -68,22 +68,25 @@ class Polyline extends EventEmitter<{
     this.wrapper = wrapper
 
     const width = wrapper.clientWidth
-    const height = wrapper.clientHeight
+    const height = this.getAvailableHeight(wrapper)
 
+    // Calculate offset from top to position envelope below spectrogram
+    const spectrogramOffset = this.getSpectrogramOffset(wrapper)
+    
     // SVG element
     const svg = createElement(
       'svg',
       {
         xmlns: 'http://www.w3.org/2000/svg',
         width: '100%',
-        height: '100%',
+        height: `${height}px`,
         viewBox: `0 0 ${width} ${height}`,
         preserveAspectRatio: 'none',
         style: {
           position: 'absolute',
           left: '0',
-          top: '0',
-          zIndex: '4',
+          top: `${spectrogramOffset}px`,
+          zIndex: '3',
         },
         part: 'envelope',
       },
@@ -167,6 +170,59 @@ class Polyline extends EventEmitter<{
     }
   }
 
+  // New method to get available height excluding spectrogram area
+  private getAvailableHeight(wrapper: HTMLElement): number {
+    const fullHeight = wrapper.clientHeight
+    
+    // Look for spectrogram wrapper (div with canvas child that has high z-index)
+    const spectrogramWrappers = wrapper.querySelectorAll('div')
+    let spectrogramHeight = 0
+    
+    spectrogramWrappers.forEach((div) => {
+      const canvas = div.querySelector('canvas')
+      if (canvas && canvas.style.zIndex === '4' && canvas.style.position === 'absolute') {
+        const divRect = div.getBoundingClientRect()
+        spectrogramHeight += divRect.height
+      }
+    })
+    
+    // Also check for spec-labels specifically
+    const specLabels = wrapper.querySelectorAll('[part="spec-labels"]')
+    if (specLabels.length > 0 && spectrogramHeight === 0) {
+      // If we found spec labels but no canvas wrapper, estimate height
+      spectrogramHeight = 200 // Default spectrogram height
+    }
+    
+    // Return remaining height for envelope, ensuring minimum height
+    return Math.max(fullHeight - spectrogramHeight, 50)
+  }
+
+  // New method to get vertical offset to position envelope below spectrogram
+  private getSpectrogramOffset(wrapper: HTMLElement): number {
+    // Look for spectrogram wrapper (div with canvas child that has high z-index)
+    const spectrogramWrappers = wrapper.querySelectorAll('div')
+    let maxBottom = 0
+    
+    spectrogramWrappers.forEach((div) => {
+      const canvas = div.querySelector('canvas')
+      if (canvas && canvas.style.zIndex === '4' && canvas.style.position === 'absolute') {
+        const divRect = div.getBoundingClientRect()
+        const wrapperRect = wrapper.getBoundingClientRect()
+        const relativeBottom = divRect.bottom - wrapperRect.top
+        maxBottom = Math.max(maxBottom, relativeBottom)
+      }
+    })
+    
+    // Also check for spec-labels specifically
+    const specLabels = wrapper.querySelectorAll('[part="spec-labels"]')
+    if (specLabels.length > 0 && maxBottom === 0) {
+      // If we found spec labels but no canvas wrapper, estimate offset
+      maxBottom = 200 // Default spectrogram height
+    }
+    
+    return maxBottom
+  }
+
   // New method to get current viewport info for zoom compatibility
   private getViewportInfo(wavesurfer: any) {
     if (!wavesurfer) return null
@@ -197,10 +253,14 @@ class Polyline extends EventEmitter<{
 
       const { svg } = this
       const currentWidth = this.wrapper.clientWidth
-      const currentHeight = this.wrapper.clientHeight
+      const currentHeight = this.getAvailableHeight(this.wrapper)
+      const spectrogramOffset = this.getSpectrogramOffset(this.wrapper)
       
       // Update viewBox to current dimensions
       svg.setAttribute('viewBox', `0 0 ${currentWidth} ${currentHeight}`)
+      // Update SVG position to stay below spectrogram
+      svg.style.top = `${spectrogramOffset}px`
+      svg.style.height = `${currentHeight}px`
       
       // Update polyline base points (start and end)
       const polyline = svg.querySelector('polyline') as SVGPolylineElement
@@ -230,7 +290,7 @@ class Polyline extends EventEmitter<{
 
     const { svg } = this
     const currentWidth = this.wrapper.clientWidth
-    const currentHeight = this.wrapper.clientHeight
+    const currentHeight = this.getAvailableHeight(this.wrapper)
     
     this.polyPoints.forEach(({ polyPoint, circle }, envelopePoint) => {
       // Convert audio time to viewport relative position
@@ -284,6 +344,8 @@ class Polyline extends EventEmitter<{
         style: {
           cursor: 'grab',
           pointerEvents: 'all',
+          position: 'relative',
+          zIndex: '5',
         },
         part: 'envelope-circle',
       },
@@ -307,7 +369,7 @@ class Polyline extends EventEmitter<{
   addPolyPoint(relX: number, relY: number, refPoint: EnvelopePoint, wavesurfer?: any) {
     const { svg } = this
     const currentWidth = this.wrapper.clientWidth
-    const currentHeight = this.wrapper.clientHeight
+    const currentHeight = this.getAvailableHeight(this.wrapper)
     const threshold = this.options.dragPointSize / 2
 
     // For zoom compatibility, we need to consider the current viewport
