@@ -3,7 +3,7 @@ type TimerEvents = {
     tick: [];
 };
 declare class Timer extends EventEmitter<TimerEvents> {
-    private unsubscribe;
+    private rafId;
     start(): void;
     stop(): void;
     destroy(): void;

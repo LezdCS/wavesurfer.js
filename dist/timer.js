@@ -2,22 +2,26 @@ import EventEmitter from './event-emitter.js';
 class Timer extends EventEmitter {
     constructor() {
         super(...arguments);
-        this.unsubscribe = () => undefined;
+        this.rafId = null;
     }
     start() {
-        this.unsubscribe = this.on('tick', () => {
-            requestAnimationFrame(() => {
-                this.emit('tick');
-            });
-        });
-        this.emit('tick');
+        if (this.rafId !== null)
+            return; // Already running
+        const tick = () => {
+            this.emit('tick');
+            this.rafId = requestAnimationFrame(tick);
+        };
+        this.rafId = requestAnimationFrame(tick);
     }
     stop() {
-        this.unsubscribe();
-        this.unAll();
+        if (this.rafId !== null) {
+            cancelAnimationFrame(this.rafId);
+            this.rafId = null;
+        }
     }
     destroy() {
-        this.unsubscribe();
+        this.stop();
+        this.unAll();
     }
 }
 export default Timer;
