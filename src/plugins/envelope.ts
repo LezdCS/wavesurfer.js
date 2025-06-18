@@ -517,7 +517,15 @@ class Polyline extends EventEmitter<{
   }
 
   isValidAndAttached(): boolean {
-    return this.svg && this.wrapper && this.wrapper.contains(this.svg)
+    const isValid = !!(this.svg && this.wrapper && this.wrapper.contains(this.svg))
+    if (!isValid) {
+      console.log('Envelope SVG is missing or detached:', {
+        hasSvg: !!this.svg,
+        hasWrapper: !!this.wrapper,
+        isAttached: this.svg && this.wrapper ? this.wrapper.contains(this.svg) : false
+      })
+    }
+    return isValid
   }
 
   destroy() {
@@ -672,6 +680,28 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
       this.wavesurfer.on('scroll', (visibleStartTime, visibleEndTime) => {
         this.onScrollChange(visibleStartTime, visibleEndTime)
       }),
+
+      // Add click event handler to catch cases where envelope gets removed
+      this.wavesurfer.on('click', () => {
+        // Check if the SVG still exists after click, recreate if needed
+        if (this.polyline && !this.polyline.isValidAndAttached()) {
+          this.initPolyline()
+          this.points.forEach((point) => {
+            this.addPolyPoint(point, this.wavesurfer?.getDuration() || 0)
+          })
+        }
+      }),
+
+      // Add interaction event handler for other interactions
+      this.wavesurfer.on('interaction', () => {
+        // Check if the SVG still exists after interaction, recreate if needed  
+        if (this.polyline && !this.polyline.isValidAndAttached()) {
+          this.initPolyline()
+          this.points.forEach((point) => {
+            this.addPolyPoint(point, this.wavesurfer?.getDuration() || 0)
+          })
+        }
+      }),
     )
   }
 
@@ -688,6 +718,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     if (this.polyline) this.polyline.destroy()
     if (!this.wavesurfer) return
 
+    console.log('Recreating envelope polyline...')
     const wrapper = this.wavesurfer.getWrapper()
 
     this.polyline = new Polyline(this.options, wrapper)
@@ -744,13 +775,29 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   }
 
   private onZoomChange(minPxPerSec: number) {
-    // Update the polyline to handle zoom changes
-    this.polyline?.updateViewBox(this.wavesurfer)
+    // Check if the SVG still exists after zoom, recreate if needed
+    if (this.polyline && !this.polyline.isValidAndAttached()) {
+      this.initPolyline()
+      this.points.forEach((point) => {
+        this.addPolyPoint(point, this.wavesurfer?.getDuration() || 0)
+      })
+    } else {
+      // Update the polyline to handle zoom changes
+      this.polyline?.updateViewBox(this.wavesurfer)
+    }
   }
 
   private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
-    // Update the polyline to handle scroll changes
-    this.polyline?.updateViewBox(this.wavesurfer)
+    // Check if the SVG still exists after scroll, recreate if needed
+    if (this.polyline && !this.polyline.isValidAndAttached()) {
+      this.initPolyline()
+      this.points.forEach((point) => {
+        this.addPolyPoint(point, this.wavesurfer?.getDuration() || 0)
+      })
+    } else {
+      // Update the polyline to handle scroll changes
+      this.polyline?.updateViewBox(this.wavesurfer)
+    }
   }
 
   // Helper method to get current viewport info for zoom compatibility
