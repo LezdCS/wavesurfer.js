@@ -173,25 +173,7 @@ class Polyline extends EventEmitter<{
   // New method to get available height excluding spectrogram area
   private getAvailableHeight(wrapper: HTMLElement): number {
     const fullHeight = wrapper.clientHeight
-    
-    // Look for spectrogram wrapper (div with canvas child that has high z-index)
-    const spectrogramWrappers = wrapper.querySelectorAll('div')
-    let spectrogramHeight = 0
-    
-    spectrogramWrappers.forEach((div) => {
-      const canvas = div.querySelector('canvas')
-      if (canvas && canvas.style.zIndex === '4' && canvas.style.position === 'absolute') {
-        const divRect = div.getBoundingClientRect()
-        spectrogramHeight += divRect.height
-      }
-    })
-    
-    // Also check for spec-labels specifically
-    const specLabels = wrapper.querySelectorAll('[part="spec-labels"]')
-    if (specLabels.length > 0 && spectrogramHeight === 0) {
-      // If we found spec labels but no canvas wrapper, estimate height
-      spectrogramHeight = 200 // Default spectrogram height
-    }
+    const spectrogramHeight = this.getSpectrogramHeight(wrapper)
     
     // Return remaining height for envelope, ensuring minimum height
     return Math.max(fullHeight - spectrogramHeight, 50)
@@ -199,28 +181,29 @@ class Polyline extends EventEmitter<{
 
   // New method to get vertical offset to position envelope below spectrogram
   private getSpectrogramOffset(wrapper: HTMLElement): number {
-    // Look for spectrogram wrapper (div with canvas child that has high z-index)
-    const spectrogramWrappers = wrapper.querySelectorAll('div')
-    let maxBottom = 0
-    
-    spectrogramWrappers.forEach((div) => {
-      const canvas = div.querySelector('canvas')
-      if (canvas && canvas.style.zIndex === '4' && canvas.style.position === 'absolute') {
-        const divRect = div.getBoundingClientRect()
-        const wrapperRect = wrapper.getBoundingClientRect()
-        const relativeBottom = divRect.bottom - wrapperRect.top
-        maxBottom = Math.max(maxBottom, relativeBottom)
+    return this.getSpectrogramHeight(wrapper)
+  }
+
+  // Helper method to get actual spectrogram height
+  private getSpectrogramHeight(wrapper: HTMLElement): number {
+    // Check for spec-labels first
+    const specLabels = wrapper.querySelectorAll('[part="spec-labels"]')
+    if (specLabels.length === 0) {
+      return 0 // No spectrogram
+    }
+
+    // Find the spectrogram wrapper div (the parent of spec-labels)
+    let spectrogramHeight = 0
+    specLabels.forEach((label) => {
+      let parent = label.parentElement
+      if (parent && parent !== wrapper) {
+        const parentRect = parent.getBoundingClientRect()
+        spectrogramHeight = Math.max(spectrogramHeight, parentRect.height)
       }
     })
-    
-    // Also check for spec-labels specifically
-    const specLabels = wrapper.querySelectorAll('[part="spec-labels"]')
-    if (specLabels.length > 0 && maxBottom === 0) {
-      // If we found spec labels but no canvas wrapper, estimate offset
-      maxBottom = 200 // Default spectrogram height
-    }
-    
-    return maxBottom
+
+    // If we couldn't find the parent, fall back to a reasonable default
+    return spectrogramHeight || 200
   }
 
   // New method to get current viewport info for zoom compatibility
