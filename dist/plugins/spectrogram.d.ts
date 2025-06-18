@@ -77,6 +77,8 @@ export type SpectrogramPluginOptions = {
     splitChannels?: boolean;
     /** URL with pre-computed spectrogram JSON data, the data must be a Uint8Array[][] **/
     frequenciesDataUrl?: string;
+    /** Enable performance optimizations for large files (caching, throttling). Default: true */
+    performanceMode?: boolean;
 };
 export type SpectrogramPluginEvents = BasePluginEvents & {
     ready: [];
@@ -104,14 +106,25 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private numLogFilters;
     private numBarkFilters;
     private numErbFilters;
+    private cachedFrequencies;
+    private cachedBuffer;
+    private renderTimeout;
+    private isRendering;
+    private lastZoomLevel;
+    private renderThrottleMs;
+    private zoomThreshold;
     static create(options?: SpectrogramPluginOptions): SpectrogramPlugin;
     constructor(options: SpectrogramPluginOptions);
     onInit(): void;
     destroy(): void;
     loadFrequenciesData(url: string | URL): Promise<void>;
+    /** Clear cached frequency data to force recalculation */
+    clearCache(): void;
     private createWrapper;
     private createCanvas;
+    private throttledRender;
     private render;
+    private fastRender;
     private drawSpectrogram;
     private createFilterBank;
     private hzToMel;
