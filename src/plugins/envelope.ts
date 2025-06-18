@@ -275,7 +275,7 @@ class Polyline extends EventEmitter<{
         }
       }
       
-      this.updatePointsForViewport(wavesurfer)
+      this.updatePointPositions()
     }, 16) // ~60fps throttling
   }
 
@@ -350,35 +350,26 @@ class Polyline extends EventEmitter<{
     })
   }
 
-  // New method to update point positions based on current viewport
-  private updatePointsForViewport(wavesurfer: any) {
-    const viewport = this.getViewportInfo(wavesurfer)
-    if (!viewport) return
-
+  // Update point positions maintaining their current relative positions
+  private updatePointPositions() {
     const { svg } = this
-    const currentWidth = this.wrapper.clientWidth
     const currentHeight = this.getAvailableHeight(this.wrapper)
     
+    // Safety checks
+    if (currentHeight <= 0) {
+      return
+    }
+    
+    // Simply update the Y positions based on current height and volume
+    // Keep X positions as they are (they're already correctly positioned by addPolyPoint)
     this.polyPoints.forEach(({ polyPoint, circle }, envelopePoint) => {
-      // Convert audio time to viewport relative position
-      const relativeTime = (envelopePoint.time - viewport.startTime) / viewport.duration
+      const y = currentHeight - (envelopePoint.volume * currentHeight)
       
-      // Only update if point is within viewport
-      if (relativeTime >= 0 && relativeTime <= 1) {
-        const x = relativeTime * currentWidth
-        const y = currentHeight - (envelopePoint.volume * currentHeight)
-        
-        polyPoint.x = x
-        polyPoint.y = y
-        circle.setAttribute('cx', x.toString())
-        circle.setAttribute('cy', y.toString())
-        
-        // Show the circle
-        circle.style.display = 'block'
-      } else {
-        // Hide points outside viewport
-        circle.style.display = 'none'
-      }
+      polyPoint.y = y
+      circle.setAttribute('cy', y.toString())
+      
+      // Always show the circle
+      circle.style.display = 'block'
     })
   }
 
