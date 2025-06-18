@@ -36,6 +36,7 @@ declare class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePl
     private points;
     private throttleTimeout;
     private volume;
+    private viewportUpdateTimeout;
     /**
      * Create a new Envelope plugin.
      */
@@ -73,9 +74,10 @@ declare class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePl
     onInit(): void;
     private emitPoints;
     private initPolyline;
-    private addPolyPoint;
     private onZoomChange;
     private onScrollChange;
+    private scheduleViewportUpdate;
+    private addPolyPoint;
     private getViewportInfo;
     private onTimeUpdate;
 }

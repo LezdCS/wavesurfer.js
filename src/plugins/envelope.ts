@@ -519,8 +519,6 @@ class Polyline extends EventEmitter<{
     })
   }
 
-
-
   destroy() {
     if (this.updateThrottleTimeout) {
       clearTimeout(this.updateThrottleTimeout)
@@ -539,6 +537,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   private points: EnvelopePoint[]
   private throttleTimeout: ReturnType<typeof setTimeout> | null = null
   private volume = 1
+  private viewportUpdateTimeout: ReturnType<typeof setTimeout> | null = null
 
   /**
    * Create a new Envelope plugin.
@@ -609,6 +608,9 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
    * Destroy the plugin instance.
    */
   public destroy() {
+    if (this.viewportUpdateTimeout) {
+      clearTimeout(this.viewportUpdateTimeout)
+    }
     this.polyline?.destroy()
     super.destroy()
   }
@@ -685,7 +687,6 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     if (this.polyline) this.polyline.destroy()
     if (!this.wavesurfer) return
 
-
     const wrapper = this.wavesurfer.getWrapper()
 
     this.polyline = new Polyline(this.options, wrapper)
@@ -737,18 +738,30 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     )
   }
 
-  private addPolyPoint(point: EnvelopePoint, duration: number) {
-    this.polyline?.addPolyPoint(point.time / duration, point.volume, point, this.wavesurfer)
-  }
-
   private onZoomChange(minPxPerSec: number) {
-    // Update the polyline to handle zoom changes
-    this.polyline?.updateViewBox(this.wavesurfer)
+    // Combine zoom and scroll updates to prevent race conditions
+    this.scheduleViewportUpdate()
   }
 
   private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
-    // Update the polyline to handle scroll changes
-    this.polyline?.updateViewBox(this.wavesurfer)
+    // Combine zoom and scroll updates to prevent race conditions
+    this.scheduleViewportUpdate()
+  }
+
+  private scheduleViewportUpdate() {
+    // Cancel any pending update to prevent race conditions
+    if (this.viewportUpdateTimeout) {
+      clearTimeout(this.viewportUpdateTimeout)
+    }
+    
+    // Schedule a single update that handles both zoom and scroll
+    this.viewportUpdateTimeout = setTimeout(() => {
+      this.polyline?.updateViewBox(this.wavesurfer)
+    }, 16) // Same throttling as the polyline internal throttling
+  }
+
+  private addPolyPoint(point: EnvelopePoint, duration: number) {
+    this.polyline?.addPolyPoint(point.time / duration, point.volume, point, this.wavesurfer)
   }
 
   // Helper method to get current viewport info for zoom compatibility
