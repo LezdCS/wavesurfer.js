@@ -413,6 +413,14 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   }
 
   onInit() {
+    // Recreate DOM elements if they were destroyed
+    if (!this.wrapper) {
+      this.createWrapper()
+    }
+    if (!this.canvas) {
+      this.createCanvas()
+    }
+
     this.container = this.container || this.wavesurfer.getWrapper()
     this.container.appendChild(this.wrapper)
 
@@ -433,8 +441,18 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
   public destroy() {
     this.unAll()
-    this.wavesurfer.un('ready', this._onReady)
-    this.wavesurfer.un('redraw', this._onRender)
+    
+    // Clean up any direct event listeners (if they exist)
+    if (this.wavesurfer) {
+      // Note: _onReady and _onRender methods may not exist, but the original code had these
+      // We should be cautious and only call un if the methods exist
+      if (typeof this._onReady === 'function') {
+        this.wavesurfer.un('ready', this._onReady)
+      }
+      if (typeof this._onRender === 'function') {
+        this.wavesurfer.un('redraw', this._onRender)
+      }
+    }
     
     // Clean up performance optimization resources
     if (this.renderTimeout) {
@@ -444,13 +462,26 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     this.cachedFrequencies = null
     this.cachedBuffer = null
     
-    this.wavesurfer = null
-    this.util = null
-    this.options = null
+    // Clean up DOM elements properly
     if (this.wrapper) {
       this.wrapper.remove()
       this.wrapper = null
     }
+    if (this.canvas) {
+      this.canvas = null
+    }
+    if (this.spectrCc) {
+      this.spectrCc = null
+    }
+    if (this.labelsEl) {
+      this.labelsEl = null
+    }
+    
+    // Clean up all references for garbage collection
+    this.wavesurfer = null
+    this.util = null
+    this.options = null
+    
     super.destroy()
   }
 
@@ -970,6 +1001,14 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         ctx.fillText(label, x, y)
       }
     }
+  }
+
+  private _onWrapperClick = (e: MouseEvent) => {
+    const rect = this.wrapper.getBoundingClientRect()
+    const relativeX = e.clientX - rect.left
+    const relativeWidth = rect.width
+    const relativePosition = relativeX / relativeWidth
+    this.emit('click', relativePosition)
   }
 
   private resample(oldMatrix) {

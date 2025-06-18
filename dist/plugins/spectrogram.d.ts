@@ -148,6 +148,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private unitType;
     private getLabelFrequency;
     private loadLabels;
+    private _onWrapperClick;
     private resample;
 }
 export default SpectrogramPlugin;
