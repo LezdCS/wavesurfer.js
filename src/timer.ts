@@ -18,11 +18,11 @@ class Timer extends EventEmitter<TimerEvents> {
 
   stop() {
     this.unsubscribe()
-    this.unAll()
   }
 
   destroy() {
     this.unsubscribe()
+    this.unAll()
   }
 }
 
