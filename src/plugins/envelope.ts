@@ -70,22 +70,19 @@ class Polyline extends EventEmitter<{
     const width = wrapper.clientWidth
     const height = this.getAvailableHeight(wrapper)
 
-    // Calculate offset from top to position envelope below spectrogram
-    const spectrogramOffset = this.getSpectrogramOffset(wrapper)
-    
-    // SVG element
+    // Position envelope to cover the entire waveform area
     const svg = createElement(
       'svg',
       {
         xmlns: 'http://www.w3.org/2000/svg',
         width: '100%',
-        height: `${height}px`,
-        viewBox: `0 0 ${width} ${height}`,
+        height: '100%',
+        viewBox: `0 0 ${width} ${wrapper.clientHeight}`,
         preserveAspectRatio: 'none',
         style: {
           position: 'absolute',
           left: '0',
-          top: `${spectrogramOffset}px`,
+          top: '0',
           zIndex: '6',
           pointerEvents: 'none',
         },
@@ -99,12 +96,16 @@ class Polyline extends EventEmitter<{
     // Setup DOM observer to detect when spectrogram is added
     this.setupDOMObserver()
 
+    // Calculate where to position the polyline within the full SVG
+    const spectrogramOffset = this.getSpectrogramOffset(wrapper)
+    const polylineBottom = spectrogramOffset + height
+    
     // A polyline representing the envelope
     const polyline = createElement(
       'polyline',
       {
         xmlns: 'http://www.w3.org/2000/svg',
-        points: `0,${height} ${width},${height}`,
+        points: `0,${polylineBottom} ${width},${polylineBottom}`,
         stroke: options.lineColor,
         'stroke-width': options.lineWidth,
         fill: 'none',
@@ -125,15 +126,16 @@ class Polyline extends EventEmitter<{
     if (options.dragLine) {
       this.subscriptions.push(
         makeDraggable(polyline as unknown as HTMLElement, (_, dy) => {
-          const { height } = svg.viewBox.baseVal
           const { points } = polyline
+          const minY = spectrogramOffset
+          const maxY = polylineBottom
           for (let i = 1; i < points.numberOfItems - 1; i++) {
             const point = points.getItem(i)
-            point.y = Math.min(height, Math.max(0, point.y + dy))
+            point.y = Math.min(maxY, Math.max(minY, point.y + dy))
           }
           const circles = svg.querySelectorAll('ellipse')
           Array.from(circles).forEach((circle) => {
-            const newY = Math.min(height, Math.max(0, Number(circle.getAttribute('cy')) + dy))
+            const newY = Math.min(maxY, Math.max(minY, Number(circle.getAttribute('cy')) + dy))
             circle.setAttribute('cy', newY.toString())
           })
 
@@ -147,7 +149,12 @@ class Polyline extends EventEmitter<{
       const rect = svg.getBoundingClientRect()
       const x = e.clientX - rect.left
       const y = e.clientY - rect.top
-      this.emit('point-create', x / rect.width, y / rect.height)
+      
+      // Convert to waveform-relative coordinates (within the waveform area only)
+      if (y >= spectrogramOffset && y <= polylineBottom) {
+        const waveformRelativeY = (y - spectrogramOffset) / height
+        this.emit('point-create', x / rect.width, waveformRelativeY)
+      }
     })
 
     // Long press on touch devices
@@ -163,7 +170,12 @@ class Polyline extends EventEmitter<{
             const rect = svg.getBoundingClientRect()
             const x = e.touches[0].clientX - rect.left
             const y = e.touches[0].clientY - rect.top
-            this.emit('point-create', x / rect.width, y / rect.height)
+            
+            // Convert to waveform-relative coordinates (within the waveform area only)
+            if (y >= spectrogramOffset && y <= polylineBottom) {
+              const waveformRelativeY = (y - spectrogramOffset) / height
+              this.emit('point-create', x / rect.width, waveformRelativeY)
+            }
           }, 500)
         } else {
           clearTimer()
@@ -176,7 +188,7 @@ class Polyline extends EventEmitter<{
     }
   }
 
-  // New method to get available height excluding spectrogram area
+  // New method to get available height for envelope (waveform area only)
   private getAvailableHeight(wrapper: HTMLElement): number {
     const fullHeight = wrapper.clientHeight
     const spectrogramHeight = this.getSpectrogramHeight(wrapper)
@@ -431,6 +443,7 @@ class Polyline extends EventEmitter<{
     const { svg } = this
     const currentWidth = this.wrapper.clientWidth
     const currentHeight = this.getAvailableHeight(this.wrapper)
+    const spectrogramOffset = this.getSpectrogramOffset(this.wrapper)
 
     // For zoom compatibility, we need to consider the current viewport
     let x: number, y: number
@@ -441,16 +454,16 @@ class Polyline extends EventEmitter<{
         // Convert from audio time to current viewport position
         const relativeTime = (refPoint.time - viewport.startTime) / viewport.duration
         x = relativeTime * currentWidth
-        y = currentHeight - (refPoint.volume * currentHeight)
+        y = spectrogramOffset + currentHeight - (refPoint.volume * currentHeight)
       } else {
         // Fallback to original calculation
         x = relX * currentWidth
-        y = currentHeight - relY * currentHeight
+        y = spectrogramOffset + currentHeight - relY * currentHeight
       }
     } else {
       // Original calculation for backward compatibility
       x = relX * currentWidth
-      y = currentHeight - relY * currentHeight
+      y = spectrogramOffset + currentHeight - relY * currentHeight
     }
 
     const newPoint = svg.createSVGPoint()
@@ -466,7 +479,9 @@ class Polyline extends EventEmitter<{
 
     this.makeDraggable(circle, (dx, dy) => {
       const newX = newPoint.x + dx
-      const newY = Math.max(0, Math.min(currentHeight, newPoint.y + dy)) // Clamp Y within bounds
+      const minY = spectrogramOffset
+      const maxY = spectrogramOffset + currentHeight
+      const newY = Math.max(minY, Math.min(maxY, newPoint.y + dy)) // Clamp Y within waveform bounds
 
       // Don't allow to drag past the next or previous point
       const next = Array.from(points).find((point) => point.x > newPoint.x)
@@ -488,19 +503,19 @@ class Polyline extends EventEmitter<{
         if (viewport) {
           const relativeViewportX = newX / currentWidth
           const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
-          const volume = 1 - (newY / currentHeight)
+          const volume = 1 - ((newY - spectrogramOffset) / currentHeight)
           
           // Update the reference point with audio coordinates
           refPoint.time = audioTime
           refPoint.volume = volume
           
-          this.emit('point-move', refPoint, audioTime / viewport.totalDuration, newY / currentHeight)
+          this.emit('point-move', refPoint, audioTime / viewport.totalDuration, (newY - spectrogramOffset) / currentHeight)
           return
         }
       }
       
       // Fallback to original behavior
-      this.emit('point-move', refPoint, newX / currentWidth, newY / currentHeight)
+      this.emit('point-move', refPoint, newX / currentWidth, (newY - spectrogramOffset) / currentHeight)
     })
   }
 
