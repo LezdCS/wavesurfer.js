@@ -222,6 +222,11 @@ class WaveSurfer extends Player {
         }));
         return plugin;
     }
+    /** Unregister a wavesurfer.js plugin */
+    unregisterPlugin(plugin) {
+        this.plugins = this.plugins.filter((p) => p !== plugin);
+        plugin.destroy();
+    }
     /** For plugins only: get the waveform wrapper div */
     getWrapper() {
         return this.renderer.getWrapper();

@@ -397,6 +397,12 @@ class WaveSurfer extends Player<WaveSurferEvents> {
     return plugin
   }
 
+  /** Unregister a wavesurfer.js plugin */
+  public unregisterPlugin(plugin: GenericPlugin): void {
+    this.plugins = this.plugins.filter((p) => p !== plugin)
+    plugin.destroy()
+  }
+
   /** For plugins only: get the waveform wrapper div */
   public getWrapper(): HTMLElement {
     return this.renderer.getWrapper()

@@ -25,17 +25,17 @@ class EventEmitter<EventTypes extends GeneralEventTypes> {
     if (!this.listeners[event]) {
       this.listeners[event] = new Set()
     }
-    this.listeners[event].add(listener)
 
     if (options?.once) {
-      const unsubscribeOnce = () => {
-        this.un(event, unsubscribeOnce)
-        this.un(event, listener)
+      const onceWrapper = (...args: EventTypes[EventName]) => {
+        this.un(event, onceWrapper)
+        listener(...args)
       }
-      this.on(event, unsubscribeOnce)
-      return unsubscribeOnce
+      this.listeners[event].add(onceWrapper)
+      return () => this.un(event, onceWrapper)
     }
 
+    this.listeners[event].add(listener)
     return () => this.un(event, listener)
   }
 
