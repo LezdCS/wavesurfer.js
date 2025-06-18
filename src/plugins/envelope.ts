@@ -46,7 +46,7 @@ class Polyline extends EventEmitter<{
   'point-create': [relativeX: number, relativeY: number]
   'line-move': [relativeY: number]
 }> {
-  private svg: SVGSVGElement
+  public svg: SVGSVGElement
   private options: Options
   private polyPoints: Map<
     EnvelopePoint,
@@ -516,6 +516,10 @@ class Polyline extends EventEmitter<{
     })
   }
 
+  isValidAndAttached(): boolean {
+    return this.svg && this.wrapper && this.wrapper.contains(this.svg)
+  }
+
   destroy() {
     if (this.updateThrottleTimeout) {
       clearTimeout(this.updateThrottleTimeout)
@@ -644,7 +648,15 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
       }),
 
       this.wavesurfer.on('redraw', () => {
-        this.polyline?.update()
+        // Check if the SVG still exists after redraw, recreate if needed
+        if (this.polyline && !this.polyline.isValidAndAttached()) {
+          this.initPolyline()
+          this.points.forEach((point) => {
+            this.addPolyPoint(point, this.wavesurfer?.getDuration() || 0)
+          })
+        } else {
+          this.polyline?.update()
+        }
       }),
 
       this.wavesurfer.on('timeupdate', (time) => {
