@@ -291,6 +291,8 @@ export type SpectrogramPluginOptions = {
   splitChannels?: boolean
   /** URL with pre-computed spectrogram JSON data, the data must be a Uint8Array[][] **/
   frequenciesDataUrl?: string
+  /** Enable performance optimizations for large files (caching, throttling). Default: true */
+  performanceMode?: boolean
 }
 
 export type SpectrogramPluginEvents = BasePluginEvents & {
@@ -320,6 +322,15 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   private numLogFilters: number
   private numBarkFilters: number
   private numErbFilters: number
+  
+  // Performance optimization properties
+  private cachedFrequencies: Uint8Array[][] | null = null
+  private cachedBuffer: AudioBuffer | null = null
+  private renderTimeout: number | null = null
+  private isRendering = false
+  private lastZoomLevel = 0
+  private renderThrottleMs = 16 // ~60fps
+  private zoomThreshold = 0.1 // Only re-render if zoom changes significantly
 
   static create(options?: SpectrogramPluginOptions) {
     return new SpectrogramPlugin(options || {})
@@ -329,6 +340,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     super(options)
 
     this.frequenciesDataUrl = options.frequenciesDataUrl
+    
+    // Performance optimizations enabled by default
+    const performanceMode = options.performanceMode !== false
 
     // Validate that sampleRate is provided when using frequenciesDataUrl
     if (this.frequenciesDataUrl && !options.sampleRate) {
@@ -409,13 +423,27 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         overflowY: 'hidden',
       })
     }
-    this.subscriptions.push(this.wavesurfer.on('redraw', () => this.render()))
+    // Use performance optimizations if enabled
+    if (this.options.performanceMode !== false) {
+      this.subscriptions.push(this.wavesurfer.on('redraw', () => this.throttledRender()))
+    } else {
+      this.subscriptions.push(this.wavesurfer.on('redraw', () => this.render()))
+    }
   }
 
   public destroy() {
     this.unAll()
     this.wavesurfer.un('ready', this._onReady)
     this.wavesurfer.un('redraw', this._onRender)
+    
+    // Clean up performance optimization resources
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+      this.renderTimeout = null
+    }
+    this.cachedFrequencies = null
+    this.cachedBuffer = null
+    
     this.wavesurfer = null
     this.util = null
     this.options = null
@@ -433,6 +461,13 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     }
     const data = await resp.json()
     this.drawSpectrogram(data)
+  }
+
+  /** Clear cached frequency data to force recalculation */
+  public clearCache() {
+    this.cachedFrequencies = null
+    this.cachedBuffer = null
+    this.lastZoomLevel = 0
   }
 
   private createWrapper() {
@@ -482,14 +517,72 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     this.spectrCc = this.canvas.getContext('2d')
   }
 
-  private render() {
-    if (this.frequenciesDataUrl) {
-      this.loadFrequenciesData(this.frequenciesDataUrl)
+  private throttledRender() {
+    // Clear any pending render
+    if (this.renderTimeout) {
+      clearTimeout(this.renderTimeout)
+    }
+    
+    // Skip if already rendering
+    if (this.isRendering) {
+      return
+    }
+    
+    // Check if zoom level changed significantly
+    const currentZoom = this.wavesurfer?.options.minPxPerSec || 0
+    const zoomDiff = Math.abs(currentZoom - this.lastZoomLevel) / Math.max(currentZoom, this.lastZoomLevel, 1)
+    
+    if (zoomDiff < this.zoomThreshold && this.cachedFrequencies) {
+      // Small zoom change - just re-render with cached data
+      this.renderTimeout = window.setTimeout(() => {
+        this.fastRender()
+      }, this.renderThrottleMs)
     } else {
-      const decodedData = this.wavesurfer?.getDecodedData()
-      if (decodedData) {
-        this.drawSpectrogram(this.getFrequencies(decodedData))
+      // Significant zoom change - full re-render
+      this.renderTimeout = window.setTimeout(() => {
+        this.render()
+      }, this.renderThrottleMs)
+    }
+  }
+
+  private render() {
+    if (this.isRendering) return
+    this.isRendering = true
+    
+    try {
+      if (this.frequenciesDataUrl) {
+        this.loadFrequenciesData(this.frequenciesDataUrl)
+      } else {
+        const decodedData = this.wavesurfer?.getDecodedData()
+        if (decodedData) {
+          // Check if we can use cached frequencies
+          if (this.cachedBuffer === decodedData && this.cachedFrequencies) {
+            this.drawSpectrogram(this.cachedFrequencies)
+          } else {
+            // Calculate new frequencies and cache them
+            const frequencies = this.getFrequencies(decodedData)
+            this.cachedFrequencies = frequencies
+            this.cachedBuffer = decodedData
+            this.drawSpectrogram(frequencies)
+          }
+        }
       }
+      this.lastZoomLevel = this.wavesurfer?.options.minPxPerSec || 0
+    } finally {
+      this.isRendering = false
+    }
+  }
+  
+  private fastRender() {
+    if (this.isRendering || !this.cachedFrequencies) return
+    this.isRendering = true
+    
+    try {
+      // Use cached frequencies for fast re-render
+      this.drawSpectrogram(this.cachedFrequencies)
+      this.lastZoomLevel = this.wavesurfer?.options.minPxPerSec || 0
+    } finally {
+      this.isRendering = false
     }
   }
 
@@ -534,15 +627,21 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       const pixels = this.resample(frequenciesData[c])
       const bitmapHeight = pixels[0].length
       const imageData = new ImageData(width, bitmapHeight)
+      const data = imageData.data
 
+      // Optimized pixel writing with batch operations
       for (let i = 0; i < pixels.length; i++) {
-        for (let j = 0; j < pixels[i].length; j++) {
-          const colorMap = this.colorMap[pixels[i][j]]
+        const column = pixels[i]
+        for (let j = 0; j < column.length; j++) {
+          const colorIndex = column[j]
+          const colorMap = this.colorMap[colorIndex]
           const redIndex = ((bitmapHeight - j - 1) * width + i) * 4
-          imageData.data[redIndex] = colorMap[0] * 255
-          imageData.data[redIndex + 1] = colorMap[1] * 255
-          imageData.data[redIndex + 2] = colorMap[2] * 255
-          imageData.data[redIndex + 3] = colorMap[3] * 255
+          
+          // Write RGBA values in one go
+          data[redIndex] = colorMap[0] * 255
+          data[redIndex + 1] = colorMap[1] * 255
+          data[redIndex + 2] = colorMap[2] * 255
+          data[redIndex + 3] = colorMap[3] * 255
         }
       }
 
@@ -875,44 +974,63 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
   private resample(oldMatrix) {
     const columnsNumber = this.getWidth()
-    const newMatrix = []
-
-    const oldPiece = 1 / oldMatrix.length
-    const newPiece = 1 / columnsNumber
-    let i
-
-    for (i = 0; i < columnsNumber; i++) {
-      const column = new Array(oldMatrix[0].length)
-      let j
-
-      for (j = 0; j < oldMatrix.length; j++) {
-        const oldStart = j * oldPiece
-        const oldEnd = oldStart + oldPiece
-        const newStart = i * newPiece
-        const newEnd = newStart + newPiece
-        const overlap = Math.max(0, Math.min(oldEnd, newEnd) - Math.max(oldStart, newStart))
-
-        let k
-        /* eslint-disable max-depth */
-        if (overlap > 0) {
-          for (k = 0; k < oldMatrix[0].length; k++) {
-            if (column[k] == null) {
-              column[k] = 0
+    const oldColumns = oldMatrix.length
+    const freqBins = oldMatrix[0].length
+    
+    // Fast path for no resampling needed
+    if (oldColumns === columnsNumber) {
+      return oldMatrix
+    }
+    
+    const newMatrix = new Array(columnsNumber)
+    const ratio = oldColumns / columnsNumber
+    
+    // Optimized resampling using nearest neighbor for better performance
+    if (ratio >= 1) {
+      // Downsampling - use averaging for better quality
+      for (let i = 0; i < columnsNumber; i++) {
+        const column = new Uint8Array(freqBins)
+        const start = Math.floor(i * ratio)
+        const end = Math.min(Math.ceil((i + 1) * ratio), oldColumns)
+        const count = end - start
+        
+        if (count === 1) {
+          // Single source column
+          column.set(oldMatrix[start])
+        } else {
+          // Average multiple source columns
+          for (let k = 0; k < freqBins; k++) {
+            let sum = 0
+            for (let j = start; j < end; j++) {
+              sum += oldMatrix[j][k]
             }
-            column[k] += (overlap / newPiece) * oldMatrix[j][k]
+            column[k] = Math.round(sum / count)
           }
         }
-        /* eslint-enable max-depth */
+        newMatrix[i] = column
       }
-
-      const intColumn = new Uint8Array(oldMatrix[0].length)
-      let m
-
-      for (m = 0; m < oldMatrix[0].length; m++) {
-        intColumn[m] = column[m]
+    } else {
+      // Upsampling - use linear interpolation
+      for (let i = 0; i < columnsNumber; i++) {
+        const column = new Uint8Array(freqBins)
+        const srcIndex = i * ratio
+        const leftIndex = Math.floor(srcIndex)
+        const rightIndex = Math.min(leftIndex + 1, oldColumns - 1)
+        const weight = srcIndex - leftIndex
+        
+        if (weight === 0 || leftIndex === rightIndex) {
+          // Exact match or at boundary
+          column.set(oldMatrix[leftIndex])
+        } else {
+          // Linear interpolation
+          const leftColumn = oldMatrix[leftIndex]
+          const rightColumn = oldMatrix[rightIndex]
+          for (let k = 0; k < freqBins; k++) {
+            column[k] = Math.round(leftColumn[k] * (1 - weight) + rightColumn[k] * weight)
+          }
+        }
+        newMatrix[i] = column
       }
-
-      newMatrix.push(intColumn)
     }
 
     return newMatrix
