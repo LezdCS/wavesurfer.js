@@ -58,8 +58,6 @@ class Polyline extends EventEmitter<{
   private subscriptions: (() => void)[] = []
   private wrapper: HTMLElement
   private updateThrottleTimeout: ReturnType<typeof setTimeout> | null = null
-  protected cachedViewport: ReturnType<typeof this.getViewportInfo> | null = null
-  protected viewportCacheTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: Options, wrapper: HTMLElement) {
     super()
@@ -242,36 +240,6 @@ class Polyline extends EventEmitter<{
     }
   }
 
-  // Get viewport info with caching for consistency during rapid updates
-  public getCachedViewportInfo(wavesurfer: any) {
-    // If we have a recent cached viewport (within 50ms), use it for consistency
-    if (this.cachedViewport) {
-      return this.cachedViewport
-    }
-    
-    // Get fresh viewport info and cache it
-    const viewport = this.getViewportInfo(wavesurfer)
-    this.cachedViewport = viewport
-    
-    // Clear cache after 50ms to ensure we don't use stale data
-    if (this.viewportCacheTimeout) {
-      clearTimeout(this.viewportCacheTimeout)
-    }
-    this.viewportCacheTimeout = setTimeout(() => {
-      this.cachedViewport = null
-    }, 50)
-    
-    return viewport
-  }
-
-  // Public method to clear viewport cache
-  public clearViewportCache() {
-    this.cachedViewport = null
-    if (this.viewportCacheTimeout) {
-      clearTimeout(this.viewportCacheTimeout)
-    }
-  }
-
   // New method to update SVG viewBox based on zoom and scroll
   updateViewBox(wavesurfer: any) {
     if (this.updateThrottleTimeout) {
@@ -279,12 +247,6 @@ class Polyline extends EventEmitter<{
     }
     
     this.updateThrottleTimeout = setTimeout(() => {
-      // Clear cached viewport since we're doing a fresh update
-      this.cachedViewport = null
-      if (this.viewportCacheTimeout) {
-        clearTimeout(this.viewportCacheTimeout)
-      }
-      
       const viewport = this.getViewportInfo(wavesurfer)
       if (!viewport) return
 
@@ -474,7 +436,7 @@ class Polyline extends EventEmitter<{
     let x: number, y: number
     
     if (wavesurfer) {
-      const viewport = this.getCachedViewportInfo(wavesurfer)
+      const viewport = this.getViewportInfo(wavesurfer)
       if (viewport) {
         // Convert from audio time to current viewport position
         const relativeTime = (refPoint.time - viewport.startTime) / viewport.duration
@@ -522,7 +484,7 @@ class Polyline extends EventEmitter<{
       // Emit the event passing the point and new relative coordinates
       // For zoom compatibility, convert back to audio time coordinates
       if (wavesurfer) {
-        const viewport = this.getCachedViewportInfo(wavesurfer)
+        const viewport = this.getViewportInfo(wavesurfer)
         if (viewport) {
           const relativeViewportX = newX / currentWidth
           const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
@@ -557,12 +519,11 @@ class Polyline extends EventEmitter<{
     })
   }
 
+
+
   destroy() {
     if (this.updateThrottleTimeout) {
       clearTimeout(this.updateThrottleTimeout)
-    }
-    if (this.viewportCacheTimeout) {
-      clearTimeout(this.viewportCacheTimeout)
     }
     this.subscriptions.forEach((unsubscribe) => unsubscribe())
     this.polyPoints.clear()
@@ -578,7 +539,6 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   private points: EnvelopePoint[]
   private throttleTimeout: ReturnType<typeof setTimeout> | null = null
   private volume = 1
-  private viewportUpdateTimeout: ReturnType<typeof setTimeout> | null = null
 
   /**
    * Create a new Envelope plugin.
@@ -649,9 +609,6 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
    * Destroy the plugin instance.
    */
   public destroy() {
-    if (this.viewportUpdateTimeout) {
-      clearTimeout(this.viewportUpdateTimeout)
-    }
     this.polyline?.destroy()
     super.destroy()
   }
@@ -728,6 +685,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     if (this.polyline) this.polyline.destroy()
     if (!this.wavesurfer) return
 
+
     const wrapper = this.wavesurfer.getWrapper()
 
     this.polyline = new Polyline(this.options, wrapper)
@@ -751,7 +709,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
         let audioTime: number
         
         if (this.wavesurfer) {
-          const viewport = this.getCachedViewportInfo(this.wavesurfer)
+          const viewport = this.getViewportInfo()
           if (viewport) {
             audioTime = viewport.startTime + (relativeX * viewport.duration)
           } else {
@@ -779,39 +737,37 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     )
   }
 
-  private onZoomChange(minPxPerSec: number) {
-    // Clear cached viewport since zoom changes coordinates
-    this.polyline?.clearViewportCache()
-    
-    // Combine zoom and scroll updates to prevent race conditions
-    // Add a small delay to allow wavesurfer to update scroll position after zoom
-    this.scheduleViewportUpdate(25) // Slightly longer delay for zoom to settle
-  }
-
-  private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
-    // Combine zoom and scroll updates to prevent race conditions
-    this.scheduleViewportUpdate()
-  }
-
-  private scheduleViewportUpdate(delay: number = 16) {
-    // Cancel any pending update to prevent race conditions
-    if (this.viewportUpdateTimeout) {
-      clearTimeout(this.viewportUpdateTimeout)
-    }
-    
-    // Schedule a single update that handles both zoom and scroll
-    this.viewportUpdateTimeout = setTimeout(() => {
-      this.polyline?.updateViewBox(this.wavesurfer)
-    }, delay) // Use custom delay, default to 16ms
-  }
-
   private addPolyPoint(point: EnvelopePoint, duration: number) {
     this.polyline?.addPolyPoint(point.time / duration, point.volume, point, this.wavesurfer)
   }
 
-  // Helper method to get cached viewport info for zoom compatibility
-  private getCachedViewportInfo(wavesurfer: any) {
-    return this.polyline?.getCachedViewportInfo ? this.polyline.getCachedViewportInfo(wavesurfer) : null
+  private onZoomChange(minPxPerSec: number) {
+    // Update the polyline to handle zoom changes
+    this.polyline?.updateViewBox(this.wavesurfer)
+  }
+
+  private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
+    // Update the polyline to handle scroll changes
+    this.polyline?.updateViewBox(this.wavesurfer)
+  }
+
+  // Helper method to get current viewport info for zoom compatibility
+  private getViewportInfo() {
+    if (!this.wavesurfer) return null
+    
+    const duration = this.wavesurfer.getDuration() || 0
+    const scrollTime = this.wavesurfer.getScroll() / (this.wavesurfer.options.minPxPerSec || 1)
+    const wrapper = this.wavesurfer.getWrapper()
+    const viewportWidth = wrapper.clientWidth
+    const viewportDuration = viewportWidth / (this.wavesurfer.options.minPxPerSec || 1)
+    
+    return {
+      startTime: scrollTime,
+      endTime: Math.min(duration, scrollTime + viewportDuration),
+      duration: viewportDuration,
+      totalDuration: duration,
+      minPxPerSec: this.wavesurfer.options.minPxPerSec || 1
+    }
   }
 
   private onTimeUpdate(time: number) {
