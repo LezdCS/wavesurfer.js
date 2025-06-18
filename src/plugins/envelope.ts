@@ -58,8 +58,8 @@ class Polyline extends EventEmitter<{
   private subscriptions: (() => void)[] = []
   private wrapper: HTMLElement
   private updateThrottleTimeout: ReturnType<typeof setTimeout> | null = null
-  private cachedViewport: ReturnType<typeof this.getViewportInfo> | null = null
-  private viewportCacheTimeout: ReturnType<typeof setTimeout> | null = null
+  protected cachedViewport: ReturnType<typeof this.getViewportInfo> | null = null
+  protected viewportCacheTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: Options, wrapper: HTMLElement) {
     super()
@@ -262,6 +262,14 @@ class Polyline extends EventEmitter<{
     }, 50)
     
     return viewport
+  }
+
+  // Public method to clear viewport cache
+  public clearViewportCache() {
+    this.cachedViewport = null
+    if (this.viewportCacheTimeout) {
+      clearTimeout(this.viewportCacheTimeout)
+    }
   }
 
   // New method to update SVG viewBox based on zoom and scroll
@@ -772,8 +780,12 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   }
 
   private onZoomChange(minPxPerSec: number) {
+    // Clear cached viewport since zoom changes coordinates
+    this.polyline?.clearViewportCache()
+    
     // Combine zoom and scroll updates to prevent race conditions
-    this.scheduleViewportUpdate()
+    // Add a small delay to allow wavesurfer to update scroll position after zoom
+    this.scheduleViewportUpdate(25) // Slightly longer delay for zoom to settle
   }
 
   private onScrollChange(visibleStartTime: number, visibleEndTime: number) {
@@ -781,7 +793,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     this.scheduleViewportUpdate()
   }
 
-  private scheduleViewportUpdate() {
+  private scheduleViewportUpdate(delay: number = 16) {
     // Cancel any pending update to prevent race conditions
     if (this.viewportUpdateTimeout) {
       clearTimeout(this.viewportUpdateTimeout)
@@ -790,7 +802,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     // Schedule a single update that handles both zoom and scroll
     this.viewportUpdateTimeout = setTimeout(() => {
       this.polyline?.updateViewBox(this.wavesurfer)
-    }, 16) // Same throttling as the polyline internal throttling
+    }, delay) // Use custom delay, default to 16ms
   }
 
   private addPolyPoint(point: EnvelopePoint, duration: number) {
