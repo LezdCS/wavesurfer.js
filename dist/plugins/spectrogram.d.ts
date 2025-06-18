@@ -89,7 +89,8 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private container;
     private wrapper;
     private labelsEl;
-    private canvasWrapper;
+    private canvas;
+    private spectrCc;
     private colorMap;
     private fftSamples;
     private height;
@@ -105,15 +106,8 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private numLogFilters;
     private numBarkFilters;
     private numErbFilters;
-    private static readonly MAX_CANVAS_WIDTH;
-    private static readonly MAX_NODES;
-    private buffer;
-    private drawnIndexes;
-    private singleCanvasWidth;
-    private totalWidth;
-    private numCanvases;
-    private isScrollable;
-    private unsubscribeCallbacks;
+    private cachedFrequencies;
+    private cachedBuffer;
     private renderTimeout;
     private isRendering;
     private lastZoomLevel;
@@ -123,22 +117,15 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     constructor(options: SpectrogramPluginOptions);
     onInit(): void;
     destroy(): void;
-    /** Clear cache and force re-render */
+    loadFrequenciesData(url: string | URL): Promise<void>;
+    /** Clear cached frequency data to force recalculation */
     clearCache(): void;
     private createWrapper;
     private createCanvas;
     private throttledRender;
     private render;
-    private setupViewportRendering;
-    private renderVisibleArea;
-    private setupScrollListener;
-    private handleScroll;
-    private clearOldCanvases;
-    private drawCanvasChunk;
-    private drawSpectrogramChunk;
-    private drawChannelSpectrogram;
-    private resampleToWidth;
     private fastRender;
+    private drawSpectrogram;
     private createFilterBank;
     private hzToMel;
     private melToHz;
@@ -161,8 +148,6 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private unitType;
     private getLabelFrequency;
     private loadLabels;
-    loadFrequenciesData(url: string | URL): Promise<void>;
-    private drawLegacySpectrogram;
-    private _onWrapperClick;
+    private resample;
 }
 export default SpectrogramPlugin;
