@@ -58,6 +58,8 @@ class Polyline extends EventEmitter<{
   private subscriptions: (() => void)[] = []
   private wrapper: HTMLElement
   private updateThrottleTimeout: ReturnType<typeof setTimeout> | null = null
+  private cachedViewport: ReturnType<typeof this.getViewportInfo> | null = null
+  private viewportCacheTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: Options, wrapper: HTMLElement) {
     super()
@@ -240,6 +242,28 @@ class Polyline extends EventEmitter<{
     }
   }
 
+  // Get viewport info with caching for consistency during rapid updates
+  public getCachedViewportInfo(wavesurfer: any) {
+    // If we have a recent cached viewport (within 50ms), use it for consistency
+    if (this.cachedViewport) {
+      return this.cachedViewport
+    }
+    
+    // Get fresh viewport info and cache it
+    const viewport = this.getViewportInfo(wavesurfer)
+    this.cachedViewport = viewport
+    
+    // Clear cache after 50ms to ensure we don't use stale data
+    if (this.viewportCacheTimeout) {
+      clearTimeout(this.viewportCacheTimeout)
+    }
+    this.viewportCacheTimeout = setTimeout(() => {
+      this.cachedViewport = null
+    }, 50)
+    
+    return viewport
+  }
+
   // New method to update SVG viewBox based on zoom and scroll
   updateViewBox(wavesurfer: any) {
     if (this.updateThrottleTimeout) {
@@ -247,6 +271,12 @@ class Polyline extends EventEmitter<{
     }
     
     this.updateThrottleTimeout = setTimeout(() => {
+      // Clear cached viewport since we're doing a fresh update
+      this.cachedViewport = null
+      if (this.viewportCacheTimeout) {
+        clearTimeout(this.viewportCacheTimeout)
+      }
+      
       const viewport = this.getViewportInfo(wavesurfer)
       if (!viewport) return
 
@@ -436,7 +466,7 @@ class Polyline extends EventEmitter<{
     let x: number, y: number
     
     if (wavesurfer) {
-      const viewport = this.getViewportInfo(wavesurfer)
+      const viewport = this.getCachedViewportInfo(wavesurfer)
       if (viewport) {
         // Convert from audio time to current viewport position
         const relativeTime = (refPoint.time - viewport.startTime) / viewport.duration
@@ -484,7 +514,7 @@ class Polyline extends EventEmitter<{
       // Emit the event passing the point and new relative coordinates
       // For zoom compatibility, convert back to audio time coordinates
       if (wavesurfer) {
-        const viewport = this.getViewportInfo(wavesurfer)
+        const viewport = this.getCachedViewportInfo(wavesurfer)
         if (viewport) {
           const relativeViewportX = newX / currentWidth
           const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
@@ -522,6 +552,9 @@ class Polyline extends EventEmitter<{
   destroy() {
     if (this.updateThrottleTimeout) {
       clearTimeout(this.updateThrottleTimeout)
+    }
+    if (this.viewportCacheTimeout) {
+      clearTimeout(this.viewportCacheTimeout)
     }
     this.subscriptions.forEach((unsubscribe) => unsubscribe())
     this.polyPoints.clear()
@@ -710,7 +743,7 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
         let audioTime: number
         
         if (this.wavesurfer) {
-          const viewport = this.getViewportInfo()
+          const viewport = this.getCachedViewportInfo(this.wavesurfer)
           if (viewport) {
             audioTime = viewport.startTime + (relativeX * viewport.duration)
           } else {
@@ -764,23 +797,9 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     this.polyline?.addPolyPoint(point.time / duration, point.volume, point, this.wavesurfer)
   }
 
-  // Helper method to get current viewport info for zoom compatibility
-  private getViewportInfo() {
-    if (!this.wavesurfer) return null
-    
-    const duration = this.wavesurfer.getDuration() || 0
-    const scrollTime = this.wavesurfer.getScroll() / (this.wavesurfer.options.minPxPerSec || 1)
-    const wrapper = this.wavesurfer.getWrapper()
-    const viewportWidth = wrapper.clientWidth
-    const viewportDuration = viewportWidth / (this.wavesurfer.options.minPxPerSec || 1)
-    
-    return {
-      startTime: scrollTime,
-      endTime: Math.min(duration, scrollTime + viewportDuration),
-      duration: viewportDuration,
-      totalDuration: duration,
-      minPxPerSec: this.wavesurfer.options.minPxPerSec || 1
-    }
+  // Helper method to get cached viewport info for zoom compatibility
+  private getCachedViewportInfo(wavesurfer: any) {
+    return this.polyline?.getCachedViewportInfo ? this.polyline.getCachedViewportInfo(wavesurfer) : null
   }
 
   private onTimeUpdate(time: number) {

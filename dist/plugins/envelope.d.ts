@@ -78,7 +78,7 @@ declare class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePl
     private onScrollChange;
     private scheduleViewportUpdate;
     private addPolyPoint;
-    private getViewportInfo;
+    private getCachedViewportInfo;
     private onTimeUpdate;
 }
 export default EnvelopePlugin;
