@@ -413,7 +413,16 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   }
 
   onInit() {
-    this.container = this.container || this.wavesurfer.getWrapper()
+    // Recreate DOM elements if they were destroyed
+    if (!this.wrapper) {
+      this.createWrapper()
+    }
+    if (!this.canvas) {
+      this.createCanvas()
+    }
+
+    // Always get fresh container reference to avoid stale references
+    this.container = this.wavesurfer.getWrapper()
     this.container.appendChild(this.wrapper)
 
     if (this.wavesurfer.options.fillParent) {
@@ -429,12 +438,35 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     } else {
       this.subscriptions.push(this.wavesurfer.on('redraw', () => this.render()))
     }
+    
+    // Trigger initial render after re-initialization
+    // This ensures the spectrogram appears even if no redraw event is fired
+    if (this.wavesurfer.getDecodedData()) {
+      // Use setTimeout to ensure DOM is fully ready
+      setTimeout(() => {
+        if (this.options.performanceMode !== false) {
+          this.throttledRender()
+        } else {
+          this.render()
+        }
+      }, 0)
+    }
   }
 
   public destroy() {
     this.unAll()
-    this.wavesurfer.un('ready', this._onReady)
-    this.wavesurfer.un('redraw', this._onRender)
+    
+    // Clean up any direct event listeners (if they exist)
+    if (this.wavesurfer) {
+      // Note: _onReady and _onRender methods may not exist, but the original code had these
+      // We should be cautious and only call un if the methods exist
+      if (typeof this._onReady === 'function') {
+        this.wavesurfer.un('ready', this._onReady)
+      }
+      if (typeof this._onRender === 'function') {
+        this.wavesurfer.un('redraw', this._onRender)
+      }
+    }
     
     // Clean up performance optimization resources
     if (this.renderTimeout) {
@@ -444,13 +476,33 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     this.cachedFrequencies = null
     this.cachedBuffer = null
     
-    this.wavesurfer = null
-    this.util = null
-    this.options = null
+    // Clean up DOM elements properly
     if (this.wrapper) {
       this.wrapper.remove()
       this.wrapper = null
     }
+    if (this.canvas) {
+      // Properly remove canvas from DOM before nullifying reference
+      this.canvas.remove()
+      this.canvas = null
+    }
+    if (this.spectrCc) {
+      this.spectrCc = null
+    }
+    if (this.labelsEl) {
+      // Properly remove labels canvas from DOM before nullifying reference
+      this.labelsEl.remove()
+      this.labelsEl = null
+    }
+    
+    // Reset state for potential re-initialization
+    this.container = null
+    this.isRendering = false
+    this.lastZoomLevel = 0
+    this.wavesurfer = null
+    this.util = null
+    this.options = null
+    
     super.destroy()
   }
 
@@ -496,6 +548,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       )
     }
 
+    // Remove any existing event listener before adding new one
+    this.wrapper.removeEventListener('click', this._onWrapperClick)
     this.wrapper.addEventListener('click', this._onWrapperClick)
   }
 
@@ -970,6 +1024,14 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         ctx.fillText(label, x, y)
       }
     }
+  }
+
+  private _onWrapperClick = (e: MouseEvent) => {
+    const rect = this.wrapper.getBoundingClientRect()
+    const relativeX = e.clientX - rect.left
+    const relativeWidth = rect.width
+    const relativePosition = relativeX / relativeWidth
+    this.emit('click', relativePosition)
   }
 
   private resample(oldMatrix) {
