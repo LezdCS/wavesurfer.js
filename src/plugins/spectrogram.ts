@@ -438,6 +438,19 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     } else {
       this.subscriptions.push(this.wavesurfer.on('redraw', () => this.render()))
     }
+    
+    // Trigger initial render after re-initialization
+    // This ensures the spectrogram appears even if no redraw event is fired
+    if (this.wavesurfer.getDecodedData()) {
+      // Use setTimeout to ensure DOM is fully ready
+      setTimeout(() => {
+        if (this.options.performanceMode !== false) {
+          this.throttledRender()
+        } else {
+          this.render()
+        }
+      }, 0)
+    }
   }
 
   public destroy() {
@@ -469,12 +482,16 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       this.wrapper = null
     }
     if (this.canvas) {
+      // Properly remove canvas from DOM before nullifying reference
+      this.canvas.remove()
       this.canvas = null
     }
     if (this.spectrCc) {
       this.spectrCc = null
     }
     if (this.labelsEl) {
+      // Properly remove labels canvas from DOM before nullifying reference
+      this.labelsEl.remove()
       this.labelsEl = null
     }
     
@@ -531,6 +548,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       )
     }
 
+    // Remove any existing event listener before adding new one
+    this.wrapper.removeEventListener('click', this._onWrapperClick)
     this.wrapper.addEventListener('click', this._onWrapperClick)
   }
 
