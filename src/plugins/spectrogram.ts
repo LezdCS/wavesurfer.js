@@ -257,6 +257,8 @@ export type SpectrogramPluginOptions = {
   frequencyMin?: number
   /** Max frequency to scale spectrogram. Set this to samplerate/2 to draw whole range of spectrogram. */
   frequencyMax?: number
+  /** Sample rate of the audio when using pre-computed spectrogram data. Required when using frequenciesDataUrl. */
+  sampleRate?: number
   /**
    * Based on: https://manual.audacityteam.org/man/spectrogram_settings.html
    * - Linear: Linear The linear vertical scale goes linearly from 0 kHz to 20 kHz frequency by default.
@@ -327,6 +329,11 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     super(options)
 
     this.frequenciesDataUrl = options.frequenciesDataUrl
+
+    // Validate that sampleRate is provided when using frequenciesDataUrl
+    if (this.frequenciesDataUrl && !options.sampleRate) {
+      throw new Error('sampleRate option is required when using frequenciesDataUrl')
+    }
 
     this.container =
       'string' == typeof options.container ? document.querySelector(options.container) : options.container
@@ -504,7 +511,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     const width = this.getWidth()
 
     // Maximum frequency represented in `frequenciesData`
-    const freqFrom = this.buffer.sampleRate / 2
+    // Use buffer.sampleRate if available (from getFrequencies), otherwise use the provided sampleRate
+    const freqFrom = this.buffer?.sampleRate ? this.buffer.sampleRate / 2 : (this.options.sampleRate || 0) / 2
 
     // Minimum and maximum frequency we want to draw
     const freqMin = this.frequencyMin
