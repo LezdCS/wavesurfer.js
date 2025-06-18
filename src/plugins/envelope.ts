@@ -172,16 +172,23 @@ class Polyline extends EventEmitter<{
     if (!wavesurfer) return null
     
     const duration = wavesurfer.getDuration() || 0
-    const scrollTime = wavesurfer.getScroll() / (wavesurfer.options.minPxPerSec || 1)
-    const viewportWidth = this.wrapper.clientWidth
-    const viewportDuration = viewportWidth / (wavesurfer.options.minPxPerSec || 1)
+    const scrollLeft = wavesurfer.getScroll() // in pixels
+    const wrapper = wavesurfer.getWrapper()
+    const waveformWidth = wrapper.scrollWidth // total waveform width in pixels
+    const viewportWidth = wrapper.clientWidth // visible width in pixels
+    
+    // Convert scroll position to time
+    const scrollTime = (scrollLeft / waveformWidth) * duration
+    const viewportDuration = (viewportWidth / waveformWidth) * duration
     
     return {
       startTime: scrollTime,
       endTime: Math.min(duration, scrollTime + viewportDuration),
       duration: viewportDuration,
       totalDuration: duration,
-      minPxPerSec: wavesurfer.options.minPxPerSec || 1
+      scrollLeft: scrollLeft,
+      waveformWidth: waveformWidth,
+      viewportWidth: viewportWidth
     }
   }
 
@@ -378,6 +385,7 @@ class Polyline extends EventEmitter<{
           refPoint.time = audioTime
           refPoint.volume = volume
           
+          // Emit with the global relative position (0-1 across the entire audio)
           this.emit('point-move', refPoint, audioTime / viewport.totalDuration, newY / currentHeight)
           return
         }
@@ -633,17 +641,23 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
     if (!this.wavesurfer) return null
     
     const duration = this.wavesurfer.getDuration() || 0
-    const scrollTime = this.wavesurfer.getScroll() / (this.wavesurfer.options.minPxPerSec || 1)
+    const scrollLeft = this.wavesurfer.getScroll() // in pixels
     const wrapper = this.wavesurfer.getWrapper()
-    const viewportWidth = wrapper.clientWidth
-    const viewportDuration = viewportWidth / (this.wavesurfer.options.minPxPerSec || 1)
+    const waveformWidth = wrapper.scrollWidth // total waveform width in pixels
+    const viewportWidth = wrapper.clientWidth // visible width in pixels
+    
+    // Convert scroll position to time
+    const scrollTime = (scrollLeft / waveformWidth) * duration
+    const viewportDuration = (viewportWidth / waveformWidth) * duration
     
     return {
       startTime: scrollTime,
       endTime: Math.min(duration, scrollTime + viewportDuration),
       duration: viewportDuration,
       totalDuration: duration,
-      minPxPerSec: this.wavesurfer.options.minPxPerSec || 1
+      scrollLeft: scrollLeft,
+      waveformWidth: waveformWidth,
+      viewportWidth: viewportWidth
     }
   }
 
