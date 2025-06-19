@@ -33,6 +33,10 @@ export type WaveEnvelopePluginOptions = {
   autoGenerateWindowSize?: number
   autoGenerateSmoothing?: number
   autoGenerateMargin?: number
+  // Performance options
+  maxVisiblePoints?: number
+  enableLOD?: boolean
+  lodThreshold?: number
 }
 
 const defaultOptions = {
@@ -54,6 +58,9 @@ const defaultOptions = {
   autoGenerateWindowSize: 0.1,
   autoGenerateSmoothing: 0.1,
   autoGenerateMargin: 0.1,
+  maxVisiblePoints: 1000,
+  enableLOD: true,
+  lodThreshold: 0.1,
 }
 
 type Options = WaveEnvelopePluginOptions & typeof defaultOptions
@@ -175,7 +182,16 @@ class DualPolyline extends EventEmitter<{
     const height = this.getWaveformChannelHeight()
     const halfHeight = height / 2
 
-    // Update all points
+    // Level-of-Detail optimization for large datasets
+    if (this.options.enableLOD && this.upperPolyPoints.size > this.options.maxVisiblePoints) {
+      this.updatePointsWithLOD(viewport, width, height, halfHeight)
+    } else {
+      this.updateAllPoints(viewport, width, height, halfHeight)
+    }
+  }
+
+  private updateAllPoints(viewport: any, width: number, height: number, halfHeight: number) {
+    // Update all points (original behavior)
     for (const [point, data] of this.upperPolyPoints) {
       const lowerData = this.lowerPolyPoints.get(point)
       if (!lowerData) continue
@@ -209,6 +225,85 @@ class DualPolyline extends EventEmitter<{
       lowerData.circle.setAttribute('cx', x.toString())
       lowerData.circle.setAttribute('cy', lowerY.toString())
     }
+  }
+
+  private updatePointsWithLOD(viewport: any, width: number, height: number, halfHeight: number) {
+    // Get visible points in time range with LOD
+    const visiblePoints = this.getVisiblePointsWithLOD(viewport)
+    
+    // Hide all points first
+    for (const [point, data] of this.upperPolyPoints) {
+      const lowerData = this.lowerPolyPoints.get(point)
+      if (!lowerData) continue
+      
+      data.circle.style.display = 'none'
+      lowerData.circle.style.display = 'none'
+    }
+
+    // Update only the selected visible points
+    visiblePoints.forEach(point => {
+      const upperData = this.upperPolyPoints.get(point)
+      const lowerData = this.lowerPolyPoints.get(point)
+      if (!upperData || !lowerData) return
+
+      // Convert audio time to viewport position
+      const relativeTime = (point.time - viewport.startTime) / viewport.duration
+      const x = relativeTime * width
+
+      const upperY = halfHeight - (point.upperAmplitude * halfHeight)
+      const lowerY = halfHeight - (point.lowerAmplitude * halfHeight)
+
+      // Update polyline points
+      upperData.polyPoint.x = x
+      upperData.polyPoint.y = upperY
+      lowerData.polyPoint.x = x
+      lowerData.polyPoint.y = lowerY
+
+      // Show and update circles
+      upperData.circle.style.display = 'block'
+      lowerData.circle.style.display = 'block'
+      upperData.circle.setAttribute('cx', x.toString())
+      upperData.circle.setAttribute('cy', upperY.toString())
+      lowerData.circle.setAttribute('cx', x.toString())
+      lowerData.circle.setAttribute('cy', lowerY.toString())
+    })
+  }
+
+  private getVisiblePointsWithLOD(viewport: any): WaveEnvelopePoint[] {
+    const allPoints = Array.from(this.upperPolyPoints.keys())
+    
+    // Filter points in viewport time range
+    const viewportPoints = allPoints.filter(point => 
+      point.time >= viewport.startTime - viewport.duration * 0.1 && 
+      point.time <= viewport.endTime + viewport.duration * 0.1
+    )
+
+    // If we have few points, show all
+    if (viewportPoints.length <= this.options.maxVisiblePoints) {
+      return viewportPoints
+    }
+
+    // Calculate detail level based on zoom
+    const detailLevel = Math.max(1, Math.floor(viewportPoints.length / this.options.maxVisiblePoints))
+    
+    // Sample points with adaptive detail level
+    const sampledPoints: WaveEnvelopePoint[] = []
+    for (let i = 0; i < viewportPoints.length; i += detailLevel) {
+      sampledPoints.push(viewportPoints[i])
+    }
+
+    // Always include first and last points in viewport for continuity
+    if (viewportPoints.length > 0) {
+      if (!sampledPoints.includes(viewportPoints[0])) {
+        sampledPoints.unshift(viewportPoints[0])
+      }
+      if (!sampledPoints.includes(viewportPoints[viewportPoints.length - 1])) {
+        sampledPoints.push(viewportPoints[viewportPoints.length - 1])
+      }
+    }
+
+    console.log(`LOD: Reduced ${viewportPoints.length} points to ${sampledPoints.length} (detail level: ${detailLevel})`)
+    return sampledPoints
   }
 
   private updatePolylineBaseline(width: number, height: number) {
@@ -544,6 +639,22 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
     super(options)
     this.points = options.points || []
     this.options = Object.assign({}, defaultOptions, options)
+    this.validatePerformanceOptions()
+  }
+
+  private validatePerformanceOptions() {
+    const segments = this.options.autoGenerateSegments
+    
+    if (segments > 5000) {
+      console.warn(`WaveEnvelope: ${segments} segments may cause performance issues. Consider:
+- Using fewer segments (recommended: 50-500)
+- Enabling Level-of-Detail: enableLOD: true
+- Reducing maxVisiblePoints: ${this.options.maxVisiblePoints}`)
+    }
+    
+    if (segments > 10000) {
+      console.error(`WaveEnvelope: ${segments} segments will likely cause severe performance issues and browser lag. Maximum recommended: 5000`)
+    }
   }
 
   public static create(options: WaveEnvelopePluginOptions) {

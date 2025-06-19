@@ -27,6 +27,9 @@ export type WaveEnvelopePluginOptions = {
     autoGenerateWindowSize?: number;
     autoGenerateSmoothing?: number;
     autoGenerateMargin?: number;
+    maxVisiblePoints?: number;
+    enableLOD?: boolean;
+    lodThreshold?: number;
 };
 declare const defaultOptions: {
     points: WaveEnvelopePoint[];
@@ -47,6 +50,9 @@ declare const defaultOptions: {
     autoGenerateWindowSize: number;
     autoGenerateSmoothing: number;
     autoGenerateMargin: number;
+    maxVisiblePoints: number;
+    enableLOD: boolean;
+    lodThreshold: number;
 };
 type Options = WaveEnvelopePluginOptions & typeof defaultOptions;
 export type WaveEnvelopePluginEvents = BasePluginEvents & {
@@ -59,6 +65,7 @@ declare class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, Wa
     private points;
     private throttleTimeout;
     constructor(options: WaveEnvelopePluginOptions);
+    private validatePerformanceOptions;
     static create(options: WaveEnvelopePluginOptions): WaveEnvelopePlugin;
     addPoint(point: WaveEnvelopePoint): void;
     removePoint(point: WaveEnvelopePoint): void;
