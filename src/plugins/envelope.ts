@@ -427,7 +427,10 @@ class Polyline extends EventEmitter<{
 
     this.makeDraggable(circle, (dx, dy) => {
       const newX = newPoint.x + dx
-      const newY = Math.max(0, Math.min(currentHeight, newPoint.y + dy)) // Clamp Y within bounds
+      
+      // Always get the current height to ensure proper bounds even with multiple channels
+      const currentBoundHeight = this.getWaveformChannelHeight()
+      const newY = Math.max(0, Math.min(currentBoundHeight, newPoint.y + dy)) // Clamp Y within bounds
 
       // Don't allow to drag past the next or previous point
       const next = Array.from(points).find((point) => point.x > newPoint.x)
@@ -449,19 +452,19 @@ class Polyline extends EventEmitter<{
         if (viewport) {
           const relativeViewportX = newX / currentWidth
           const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
-          const volume = 1 - (newY / currentHeight)
+          const volume = 1 - (newY / currentBoundHeight)
           
           // Update the reference point with audio coordinates
           refPoint.time = audioTime
           refPoint.volume = volume
           
-          this.emit('point-move', refPoint, audioTime / viewport.totalDuration, newY / currentHeight)
+          this.emit('point-move', refPoint, audioTime / viewport.totalDuration, newY / currentBoundHeight)
           return
         }
       }
       
       // Fallback to original behavior
-      this.emit('point-move', refPoint, newX / currentWidth, newY / currentHeight)
+      this.emit('point-move', refPoint, newX / currentWidth, newY / currentBoundHeight)
     })
   }
 
