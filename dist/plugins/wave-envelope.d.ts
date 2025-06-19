@@ -22,7 +22,9 @@ export type WaveEnvelopePluginOptions = {
     dragPointStroke?: string;
     clipWaveform?: boolean;
     autoGenerate?: boolean;
+    autoGenerateMethod?: 'peak' | 'rms';
     autoGenerateSegments?: number;
+    autoGenerateWindowSize?: number;
     autoGenerateSmoothing?: number;
     autoGenerateMargin?: number;
 };
@@ -40,7 +42,9 @@ declare const defaultOptions: {
     dragPointStroke: string;
     clipWaveform: boolean;
     autoGenerate: boolean;
+    autoGenerateMethod: "peak" | "rms";
     autoGenerateSegments: number;
+    autoGenerateWindowSize: number;
     autoGenerateSmoothing: number;
     autoGenerateMargin: number;
 };

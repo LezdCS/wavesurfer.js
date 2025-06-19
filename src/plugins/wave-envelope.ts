@@ -28,7 +28,9 @@ export type WaveEnvelopePluginOptions = {
   dragPointStroke?: string
   clipWaveform?: boolean
   autoGenerate?: boolean
+  autoGenerateMethod?: 'peak' | 'rms'
   autoGenerateSegments?: number
+  autoGenerateWindowSize?: number
   autoGenerateSmoothing?: number
   autoGenerateMargin?: number
 }
@@ -47,7 +49,9 @@ const defaultOptions = {
   dragPointStroke: 'rgba(0, 0, 0, 0.5)',
   clipWaveform: true,
   autoGenerate: false,
+  autoGenerateMethod: 'peak' as 'peak' | 'rms',
   autoGenerateSegments: 50,
+  autoGenerateWindowSize: 0.1,
   autoGenerateSmoothing: 0.1,
   autoGenerateMargin: 0.1,
 }
@@ -404,13 +408,18 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
   public addPoint(point: WaveEnvelopePoint) {
     if (!point.id) point.id = randomId()
 
+    console.log('WaveEnvelope: Adding point:', { time: point.time, upper: point.upperAmplitude, lower: point.lowerAmplitude })
+
     const index = this.points.findLastIndex((p) => p.time < point.time)
     this.points.splice(index + 1, 0, point)
     this.emitPoints()
 
     const duration = this.wavesurfer?.getDuration()
     if (duration && this.dualPolyline) {
+      console.log('WaveEnvelope: Adding poly point for duration:', duration)
       this.addPolyPoint(point, duration)
+    } else {
+      console.log('WaveEnvelope: Cannot add poly point - duration:', duration, 'dualPolyline:', !!this.dualPolyline)
     }
   }
 
@@ -444,8 +453,8 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
       throw new Error('WaveSurfer is not initialized')
     }
 
-    // Get audio data from the renderer
-    const audioData = (this.wavesurfer as any).renderer?.audioData
+    // Get audio data from WaveSurfer
+    const audioData = this.wavesurfer.getDecodedData()
     if (!audioData) {
       throw new Error('No audio data available. Make sure audio is loaded first.')
     }
@@ -469,6 +478,16 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
     const segmentCount = this.options.autoGenerateSegments
     const segmentDuration = duration / segmentCount
     const samplesPerSegment = Math.floor(sampleRate * segmentDuration)
+    
+    console.log('WaveEnvelope: Analyzing audio data', {
+      duration,
+      sampleRate,
+      numberOfChannels,
+      segmentCount,
+      segmentDuration,
+      samplesPerSegment,
+      audioLength: audioData.length
+    })
     
     const points: WaveEnvelopePoint[] = []
     
@@ -497,6 +516,8 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
       const upperAmplitude = Math.min(1, maxPositive + margin)
       const lowerAmplitude = Math.max(-1, maxNegative - margin)
       
+      console.log(`WaveEnvelope: Segment ${i} - maxPos: ${maxPositive.toFixed(4)}, maxNeg: ${maxNegative.toFixed(4)}, upper: ${upperAmplitude.toFixed(4)}, lower: ${lowerAmplitude.toFixed(4)}`)
+      
       points.push({
         time: startTime,
         upperAmplitude,
@@ -510,6 +531,8 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
       upperAmplitude: points[points.length - 1]?.upperAmplitude || 0.5,
       lowerAmplitude: points[points.length - 1]?.lowerAmplitude || -0.5,
     })
+    
+    console.log('WaveEnvelope: Generated points:', points.length)
     
     // Apply smoothing if requested
     if (this.options.autoGenerateSmoothing > 0) {
@@ -565,7 +588,7 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
       throw new Error('WaveSurfer is not initialized')
     }
 
-    const audioData = (this.wavesurfer as any).renderer?.audioData
+    const audioData = this.wavesurfer.getDecodedData()
     if (!audioData) {
       throw new Error('No audio data available')
     }
@@ -648,7 +671,11 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
         // Auto-generate envelope from audio if enabled and no points exist
         if (this.options.autoGenerate && this.points.length === 0) {
           try {
-            this.generateEnvelopeFromAudio(true)
+            if (this.options.autoGenerateMethod === 'rms') {
+              this.generateRMSEnvelope(this.options.autoGenerateWindowSize, true)
+            } else {
+              this.generateEnvelopeFromAudio(true)
+            }
           } catch (error) {
             console.warn('Failed to auto-generate envelope:', error)
           }
