@@ -96,9 +96,6 @@ class Polyline extends EventEmitter<{
 
     this.svg = svg
 
-    // Setup DOM observer to detect when waveform channels change
-    this.setupDOMObserver()
-
     // A polyline representing the envelope
     const polyline = createElement(
       'polyline',
@@ -285,46 +282,6 @@ class Polyline extends EventEmitter<{
     }, 16) // ~60fps throttling
   }
 
-  // New method to recalculate position when DOM changes (e.g., waveform channel added)
-  private setupDOMObserver() {
-    if (!this.wrapper) return
-
-    // Create a MutationObserver to watch for DOM changes
-    const observer = new MutationObserver((mutations) => {
-      let needsReposition = false
-      
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'childList') {
-          // Check if waveform channel elements were added
-          mutation.addedNodes.forEach((node) => {
-            if (node instanceof HTMLElement) {
-              if (node.classList.contains('wavesurfer-waveform-channel') || 
-                  node.id === 'wavesurfer-waveform-channel-0' ||
-                  node.querySelector('.wavesurfer-waveform-channel') ||
-                  node.querySelector('#wavesurfer-waveform-channel-0')) {
-                needsReposition = true
-              }
-            }
-          })
-        }
-      })
-      
-      if (needsReposition) {
-        // Delay to ensure DOM is fully updated
-        setTimeout(() => {
-          this.repositionEnvelope()
-        }, 100)
-      }
-    })
-
-    observer.observe(this.wrapper, {
-      childList: true,
-      subtree: true
-    })
-
-    // Store observer for cleanup
-    this.subscriptions.push(() => observer.disconnect())
-  }
 
   // New method to reposition envelope when waveform channel changes
   private repositionEnvelope() {
