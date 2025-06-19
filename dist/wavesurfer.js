@@ -231,10 +231,6 @@ class WaveSurfer extends Player {
         this.plugins = this.plugins.filter((p) => p !== plugin);
         plugin.destroy();
     }
-    /** Remove a wavesurfer.js plugin without destroying it (allows re-registration) */
-    removePlugin(plugin) {
-        this.plugins = this.plugins.filter((p) => p !== plugin);
-    }
     /** For plugins only: get the waveform wrapper div */
     getWrapper() {
         return this.renderer.getWrapper();

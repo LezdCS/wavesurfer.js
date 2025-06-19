@@ -167,8 +167,6 @@ declare class WaveSurfer extends Player<WaveSurferEvents> {
     registerPlugin<T extends GenericPlugin>(plugin: T): T;
     /** Unregister a wavesurfer.js plugin */
     unregisterPlugin(plugin: GenericPlugin): void;
-    /** Remove a wavesurfer.js plugin without destroying it (allows re-registration) */
-    removePlugin(plugin: GenericPlugin): void;
     /** For plugins only: get the waveform wrapper div */
     getWrapper(): HTMLElement;
     /** For plugins only: get the scroll container client width */
