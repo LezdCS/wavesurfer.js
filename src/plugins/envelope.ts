@@ -68,10 +68,10 @@ class Polyline extends EventEmitter<{
     this.wrapper = wrapper
 
     const width = wrapper.clientWidth
-    const height = this.getAvailableHeight(wrapper)
+    const height = this.getWaveformChannelHeight()
 
-    // Calculate offset from top to position envelope below spectrogram
-    const spectrogramOffset = this.getSpectrogramOffset(wrapper)
+    // Position envelope on the first waveform channel, not below spectrogram
+    const waveformOffset = this.getWaveformChannelOffset()
     
     // SVG element
     const svg = createElement(
@@ -85,7 +85,7 @@ class Polyline extends EventEmitter<{
         style: {
           position: 'absolute',
           left: '0',
-          top: `${spectrogramOffset}px`,
+          top: `${waveformOffset}px`,
           zIndex: '6',
           pointerEvents: 'none',
         },
@@ -96,7 +96,7 @@ class Polyline extends EventEmitter<{
 
     this.svg = svg
 
-    // Setup DOM observer to detect when spectrogram is added
+    // Setup DOM observer to detect when waveform channels change
     this.setupDOMObserver()
 
     // A polyline representing the envelope
@@ -176,50 +176,53 @@ class Polyline extends EventEmitter<{
     }
   }
 
-  // New method to get available height excluding spectrogram area
-  private getAvailableHeight(wrapper: HTMLElement): number {
-    const fullHeight = wrapper.clientHeight
-    const spectrogramHeight = this.getSpectrogramHeight(wrapper)
-    
-    // Return remaining height for envelope, ensuring minimum height
-    return Math.max(fullHeight - spectrogramHeight, 50)
-  }
-
-  // New method to get vertical offset to position envelope below spectrogram
-  private getSpectrogramOffset(wrapper: HTMLElement): number {
-    return this.getSpectrogramHeight(wrapper)
-  }
-
-  // Helper method to get actual spectrogram height
-  private getSpectrogramHeight(wrapper: HTMLElement): number {
-    // Check for spec-labels first
-    const specLabels = wrapper.querySelectorAll('[part="spec-labels"]')
-    if (specLabels.length === 0) {
-      return 0 // No spectrogram
-    }
-
-    // Find the spectrogram wrapper div (the parent of spec-labels)
-    let spectrogramHeight = 0
-    specLabels.forEach((label) => {
-      let parent = label.parentElement
-      if (parent && parent !== wrapper) {
-        const parentRect = parent.getBoundingClientRect()
-        spectrogramHeight = Math.max(spectrogramHeight, parentRect.height)
+  // New method to get waveform channel height using the IDs we added
+  private getWaveformChannelHeight(): number {
+    // Try to get the first waveform channel by ID
+    const firstChannel = document.getElementById('wavesurfer-waveform-channel-0')
+    if (firstChannel) {
+      const heightAttr = firstChannel.getAttribute('data-waveform-height')
+      if (heightAttr) {
+        return parseInt(heightAttr, 10)
       }
-    })
-
-    // If we couldn't find the parent, fall back to checking the wrapper for spectrogram elements
-    if (spectrogramHeight === 0) {
-      // Look for any canvas elements that might be spectrograms
-      const canvases = wrapper.querySelectorAll('canvas')
-      canvases.forEach((canvas) => {
-        if (canvas.style.zIndex === '4') { // Spectrogram canvas has zIndex 4
-          spectrogramHeight = Math.max(spectrogramHeight, canvas.offsetHeight)
-        }
-      })
+      // Fallback to computed height
+      return firstChannel.offsetHeight
     }
+    
+    // Fallback to looking for any waveform channel class
+    const waveformChannel = this.wrapper.querySelector('.wavesurfer-waveform-channel') as HTMLElement
+    if (waveformChannel) {
+      const heightAttr = waveformChannel.getAttribute('data-waveform-height')
+      if (heightAttr) {
+        return parseInt(heightAttr, 10)
+      }
+      return waveformChannel.offsetHeight
+    }
+    
+    // Final fallback - default height
+    return 128
+  }
 
-    return spectrogramHeight
+  // New method to get vertical offset to position envelope ON the first waveform channel  
+  private getWaveformChannelOffset(): number {
+    // Try to get the first waveform channel by ID
+    const firstChannel = document.getElementById('wavesurfer-waveform-channel-0')
+    if (firstChannel) {
+      const wrapperRect = this.wrapper.getBoundingClientRect()
+      const channelRect = firstChannel.getBoundingClientRect()
+      return channelRect.top - wrapperRect.top
+    }
+    
+    // Fallback to looking for any waveform channel class
+    const waveformChannel = this.wrapper.querySelector('.wavesurfer-waveform-channel') as HTMLElement
+    if (waveformChannel) {
+      const wrapperRect = this.wrapper.getBoundingClientRect()
+      const channelRect = waveformChannel.getBoundingClientRect()
+      return channelRect.top - wrapperRect.top
+    }
+    
+    // Final fallback - position at top
+    return 0
   }
 
   // New method to get current viewport info for zoom compatibility
@@ -252,13 +255,13 @@ class Polyline extends EventEmitter<{
 
       const { svg } = this
       const currentWidth = this.wrapper.clientWidth
-      const currentHeight = this.getAvailableHeight(this.wrapper)
-      const spectrogramOffset = this.getSpectrogramOffset(this.wrapper)
+      const currentHeight = this.getWaveformChannelHeight()
+      const waveformOffset = this.getWaveformChannelOffset()
       
       // Update viewBox to current dimensions
       svg.setAttribute('viewBox', `0 0 ${currentWidth} ${currentHeight}`)
-      // Update SVG position to stay below spectrogram
-      svg.style.top = `${spectrogramOffset}px`
+      // Update SVG position to stay below waveform channel
+      svg.style.top = `${waveformOffset}px`
       svg.style.height = `${currentHeight}px`
       
       // Update polyline base points (start and end)
@@ -282,7 +285,7 @@ class Polyline extends EventEmitter<{
     }, 16) // ~60fps throttling
   }
 
-  // New method to recalculate position when DOM changes (e.g., spectrogram added)
+  // New method to recalculate position when DOM changes (e.g., waveform channel added)
   private setupDOMObserver() {
     if (!this.wrapper) return
 
@@ -292,12 +295,13 @@ class Polyline extends EventEmitter<{
       
       mutations.forEach((mutation) => {
         if (mutation.type === 'childList') {
-          // Check if spectrogram elements were added
+          // Check if waveform channel elements were added
           mutation.addedNodes.forEach((node) => {
             if (node instanceof HTMLElement) {
-              if (node.querySelector('[part="spec-labels"]') || 
-                  node.querySelector('canvas[style*="z-index: 4"]') ||
-                  node.hasAttribute('part') && node.getAttribute('part') === 'spec-labels') {
+              if (node.classList.contains('wavesurfer-waveform-channel') || 
+                  node.id === 'wavesurfer-waveform-channel-0' ||
+                  node.querySelector('.wavesurfer-waveform-channel') ||
+                  node.querySelector('#wavesurfer-waveform-channel-0')) {
                 needsReposition = true
               }
             }
@@ -322,14 +326,14 @@ class Polyline extends EventEmitter<{
     this.subscriptions.push(() => observer.disconnect())
   }
 
-  // New method to reposition envelope when spectrogram changes
+  // New method to reposition envelope when waveform channel changes
   private repositionEnvelope() {
     const { svg } = this
-    const currentHeight = this.getAvailableHeight(this.wrapper)
-    const spectrogramOffset = this.getSpectrogramOffset(this.wrapper)
+    const currentHeight = this.getWaveformChannelHeight()
+    const waveformOffset = this.getWaveformChannelOffset()
     
     // Update SVG position and size
-    svg.style.top = `${spectrogramOffset}px`
+    svg.style.top = `${waveformOffset}px`
     svg.style.height = `${currentHeight}px`
     svg.setAttribute('viewBox', `0 0 ${this.wrapper.clientWidth} ${currentHeight}`)
     
@@ -356,7 +360,7 @@ class Polyline extends EventEmitter<{
   // Update point positions maintaining their current relative positions
   private updatePointPositions() {
     const { svg } = this
-    const currentHeight = this.getAvailableHeight(this.wrapper)
+    const currentHeight = this.getWaveformChannelHeight()
     
     // Safety checks
     if (currentHeight <= 0) {
@@ -430,7 +434,7 @@ class Polyline extends EventEmitter<{
   addPolyPoint(relX: number, relY: number, refPoint: EnvelopePoint, wavesurfer?: any) {
     const { svg } = this
     const currentWidth = this.wrapper.clientWidth
-    const currentHeight = this.getAvailableHeight(this.wrapper)
+    const currentHeight = this.getWaveformChannelHeight()
 
     // For zoom compatibility, we need to consider the current viewport
     let x: number, y: number
@@ -518,8 +522,6 @@ class Polyline extends EventEmitter<{
       circle.setAttribute('ry', ry.toString())
     })
   }
-
-
 
   destroy() {
     if (this.updateThrottleTimeout) {
@@ -684,7 +686,6 @@ class EnvelopePlugin extends BasePlugin<EnvelopePluginEvents, EnvelopePluginOpti
   private initPolyline() {
     if (this.polyline) this.polyline.destroy()
     if (!this.wavesurfer) return
-
 
     const wrapper = this.wavesurfer.getWrapper()
 

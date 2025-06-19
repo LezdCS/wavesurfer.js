@@ -428,6 +428,16 @@ class WaveSurfer extends Player<WaveSurferEvents> {
     return this.renderer.getScroll()
   }
 
+  /** Get the current waveform height for a specific channel */
+  public getWaveformHeight(channelIndex = 0): number {
+    return this.renderer.getWaveformHeight(channelIndex)
+  }
+
+  /** Get all waveform channel heights */
+  public getAllWaveformHeights(): number[] {
+    return this.renderer.getAllWaveformHeights()
+  }
+
   /** Set the current scroll position in pixels */
   public setScroll(pixels: number) {
     return this.renderer.setScroll(pixels)

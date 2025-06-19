@@ -237,11 +237,11 @@ class Renderer extends EventEmitter<RendererEvents> {
         }
       </style>
 
-      <div class="scroll" part="scroll">
-        <div class="wrapper" part="wrapper">
-          <div class="canvases" part="canvases"></div>
-          <div class="progress" part="progress"></div>
-          <div class="cursor" part="cursor"></div>
+      <div class="scroll" part="scroll" id="wavesurfer-scroll">
+        <div class="wrapper" part="wrapper" id="wavesurfer-wrapper">
+          <div class="canvases" part="canvases" id="wavesurfer-canvases"></div>
+          <div class="progress" part="progress" id="wavesurfer-progress"></div>
+          <div class="cursor" part="cursor" id="wavesurfer-cursor"></div>
         </div>
       </div>
     `
@@ -278,6 +278,38 @@ class Renderer extends EventEmitter<RendererEvents> {
 
   getScroll(): number {
     return this.scrollContainer.scrollLeft
+  }
+
+  /** Get the current waveform height for a specific channel or the default height */
+  public getWaveformHeight(channelIndex = 0): number {
+    // Try to get from existing DOM first
+    const channelElement = document.getElementById(`wavesurfer-waveform-channel-${channelIndex}`)
+    if (channelElement) {
+      const heightAttr = channelElement.getAttribute('data-waveform-height')
+      if (heightAttr) return parseInt(heightAttr, 10)
+    }
+    
+    // Fall back to calculation
+    const channelOptions = this.options.splitChannels?.[channelIndex]
+    const height = channelOptions?.height ?? this.options.height
+    return this.getHeight(height, this.options.splitChannels)
+  }
+
+  /** Get all waveform channel heights */
+  public getAllWaveformHeights(): number[] {
+    const heights: number[] = []
+    const channelElements = document.querySelectorAll('.wavesurfer-waveform-channel')
+    
+    channelElements.forEach((element, index) => {
+      const heightAttr = element.getAttribute('data-waveform-height')
+      if (heightAttr) {
+        heights[index] = parseInt(heightAttr, 10)
+      } else {
+        heights[index] = this.getWaveformHeight(index)
+      }
+    })
+    
+    return heights.length > 0 ? heights : [this.getWaveformHeight()]
   }
 
   setScroll(pixels: number) {
@@ -620,6 +652,14 @@ class Renderer extends EventEmitter<RendererEvents> {
     // A container for canvases
     const canvasContainer = document.createElement('div')
     const height = this.getHeight(options.height, options.splitChannels)
+    
+    // Add IDs and data attributes for easy identification
+    canvasContainer.id = `wavesurfer-waveform-channel-${channelIndex}`
+    canvasContainer.className = 'wavesurfer-waveform-channel'
+    canvasContainer.setAttribute('data-channel-index', channelIndex.toString())
+    canvasContainer.setAttribute('data-waveform-height', height.toString())
+    canvasContainer.setAttribute('data-overlay', overlay ? 'true' : 'false')
+    
     canvasContainer.style.height = `${height}px`
     if (overlay && channelIndex > 0) {
       canvasContainer.style.marginTop = `-${height}px`
@@ -629,6 +669,8 @@ class Renderer extends EventEmitter<RendererEvents> {
 
     // A container for progress canvases
     const progressContainer = canvasContainer.cloneNode() as HTMLElement
+    progressContainer.id = `wavesurfer-progress-channel-${channelIndex}`
+    progressContainer.className = 'wavesurfer-progress-channel'
     this.progressWrapper.appendChild(progressContainer)
 
     // Render the waveform

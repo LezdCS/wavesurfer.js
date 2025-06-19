@@ -175,6 +175,10 @@ declare class WaveSurfer extends Player<WaveSurferEvents> {
     getWidth(): number;
     /** Get the current scroll position in pixels */
     getScroll(): number;
+    /** Get the current waveform height for a specific channel */
+    getWaveformHeight(channelIndex?: number): number;
+    /** Get all waveform channel heights */
+    getAllWaveformHeights(): number[];
     /** Set the current scroll position in pixels */
     setScroll(pixels: number): void;
     /** Move the start of the viewing window to a specific time in the audio (in seconds) */

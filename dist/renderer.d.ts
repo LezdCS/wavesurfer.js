@@ -41,6 +41,10 @@ declare class Renderer extends EventEmitter<RendererEvents> {
     getWrapper(): HTMLElement;
     getWidth(): number;
     getScroll(): number;
+    /** Get the current waveform height for a specific channel or the default height */
+    getWaveformHeight(channelIndex?: number): number;
+    /** Get all waveform channel heights */
+    getAllWaveformHeights(): number[];
     setScroll(pixels: number): void;
     setScrollPercentage(percent: number): void;
     destroy(): void;
