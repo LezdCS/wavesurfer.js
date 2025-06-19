@@ -70,7 +70,7 @@ class Polyline extends EventEmitter<{
     const width = wrapper.clientWidth
     const height = this.getWaveformChannelHeight()
 
-    // Position envelope on the first waveform channel, not below spectrogram
+    // Position envelope on the first waveform channel
     const waveformOffset = this.getWaveformChannelOffset()
     
     // SVG element
