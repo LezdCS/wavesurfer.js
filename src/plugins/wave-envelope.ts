@@ -68,12 +68,13 @@ class DualPolyline extends EventEmitter<{
   'point-dragout': [point: WaveEnvelopePoint]
   'point-create': [relativeX: number, upperY: number, lowerY: number]
 }> {
-  public svg: SVGSVGElement
+  public svg!: SVGSVGElement
   private options: Options
   private upperPolyPoints: Map<WaveEnvelopePoint, { polyPoint: SVGPoint; circle: SVGEllipseElement }>
   private lowerPolyPoints: Map<WaveEnvelopePoint, { polyPoint: SVGPoint; circle: SVGEllipseElement }>
   private subscriptions: (() => void)[] = []
   private wrapper: HTMLElement
+  private updateThrottleTimeout: ReturnType<typeof setTimeout> | null = null
 
   constructor(options: Options, wrapper: HTMLElement) {
     super()
@@ -82,7 +83,13 @@ class DualPolyline extends EventEmitter<{
     this.lowerPolyPoints = new Map()
     this.wrapper = wrapper
 
-    const width = wrapper.clientWidth
+    this.createSVG()
+    this.createPolylines()
+    this.setupEventListeners()
+  }
+
+  private createSVG() {
+    const width = this.wrapper.clientWidth
     const height = this.getWaveformChannelHeight()
     
     // Create SVG element
@@ -100,10 +107,7 @@ class DualPolyline extends EventEmitter<{
         pointerEvents: 'none',
       },
       part: 'wave-envelope',
-    }, wrapper) as SVGSVGElement
-
-    this.createPolylines()
-    this.setupEventListeners()
+    }, this.wrapper) as SVGSVGElement
   }
 
   public getWaveformChannelHeight(): number {
@@ -122,6 +126,114 @@ class DualPolyline extends EventEmitter<{
     }
     
     return 128
+  }
+
+  private getViewportInfo(wavesurfer: any) {
+    if (!wavesurfer) return null
+    
+    const duration = wavesurfer.getDuration() || 0
+    const scrollLeft = wavesurfer.getScroll()
+    const minPxPerSec = wavesurfer.options.minPxPerSec || 1
+    const viewportWidth = this.wrapper.clientWidth
+    const scrollTime = scrollLeft / minPxPerSec
+    const viewportDuration = viewportWidth / minPxPerSec
+    
+    return {
+      startTime: scrollTime,
+      endTime: Math.min(duration, scrollTime + viewportDuration),
+      duration: viewportDuration,
+      totalDuration: duration,
+      minPxPerSec,
+      scrollLeft
+    }
+  }
+
+  updateViewBox(wavesurfer: any) {
+    if (this.updateThrottleTimeout) {
+      clearTimeout(this.updateThrottleTimeout)
+    }
+    
+    this.updateThrottleTimeout = setTimeout(() => {
+      const width = this.wrapper.clientWidth
+      const height = this.getWaveformChannelHeight()
+      
+      // Update SVG dimensions and viewBox
+      this.svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+      this.svg.style.height = `${height}px`
+      
+      this.updatePointPositions(wavesurfer)
+      this.updatePolylineBaseline(width, height)
+      this.updateFillArea()
+    }, 16) // ~60fps throttling
+  }
+
+  private updatePointPositions(wavesurfer?: any) {
+    const viewport = this.getViewportInfo(wavesurfer)
+    if (!viewport) return
+
+    const width = this.wrapper.clientWidth
+    const height = this.getWaveformChannelHeight()
+    const halfHeight = height / 2
+
+    // Update all points
+    for (const [point, data] of this.upperPolyPoints) {
+      const lowerData = this.lowerPolyPoints.get(point)
+      if (!lowerData) continue
+
+      // Convert audio time to viewport position
+      const relativeTime = (point.time - viewport.startTime) / viewport.duration
+      const x = relativeTime * width
+
+      // Skip points outside viewport for performance
+      if (x < -50 || x > width + 50) {
+        data.circle.style.display = 'none'
+        lowerData.circle.style.display = 'none'
+        continue
+      }
+
+      data.circle.style.display = 'block'
+      lowerData.circle.style.display = 'block'
+
+      const upperY = halfHeight - (point.upperAmplitude * halfHeight)
+      const lowerY = halfHeight - (point.lowerAmplitude * halfHeight)
+
+      // Update polyline points
+      data.polyPoint.x = x
+      data.polyPoint.y = upperY
+      lowerData.polyPoint.x = x
+      lowerData.polyPoint.y = lowerY
+
+      // Update circles
+      data.circle.setAttribute('cx', x.toString())
+      data.circle.setAttribute('cy', upperY.toString())
+      lowerData.circle.setAttribute('cx', x.toString())
+      lowerData.circle.setAttribute('cy', lowerY.toString())
+    }
+  }
+
+  private updatePolylineBaseline(width: number, height: number) {
+    const halfHeight = height / 2
+    const upperPolyline = this.svg.querySelector('[part="upper-polyline"]') as SVGPolylineElement
+    const lowerPolyline = this.svg.querySelector('[part="lower-polyline"]') as SVGPolylineElement
+    
+    if (upperPolyline && upperPolyline.points.numberOfItems >= 2) {
+      // Update first and last baseline points
+      const firstPoint = upperPolyline.points.getItem(0)
+      const lastPoint = upperPolyline.points.getItem(upperPolyline.points.numberOfItems - 1)
+      firstPoint.x = 0
+      firstPoint.y = halfHeight - halfHeight * 0.5
+      lastPoint.x = width
+      lastPoint.y = halfHeight - halfHeight * 0.5
+    }
+    
+    if (lowerPolyline && lowerPolyline.points.numberOfItems >= 2) {
+      const firstPoint = lowerPolyline.points.getItem(0)
+      const lastPoint = lowerPolyline.points.getItem(lowerPolyline.points.numberOfItems - 1)
+      firstPoint.x = 0
+      firstPoint.y = halfHeight + halfHeight * 0.5
+      lastPoint.x = width
+      lastPoint.y = halfHeight + halfHeight * 0.5
+    }
   }
 
   private createPolylines() {
@@ -178,14 +290,34 @@ class DualPolyline extends EventEmitter<{
     })
   }
 
-  addPolyPoint(relX: number, upperRelY: number, lowerRelY: number, refPoint: WaveEnvelopePoint) {
+  addPolyPoint(relX: number, upperRelY: number, lowerRelY: number, refPoint: WaveEnvelopePoint, wavesurfer?: any) {
     const { svg } = this
     const width = this.wrapper.clientWidth
     const height = this.getWaveformChannelHeight()
 
-    const x = relX * width
-    const upperY = upperRelY * height
-    const lowerY = lowerRelY * height
+    let x: number, upperY: number, lowerY: number
+
+    if (wavesurfer) {
+      const viewport = this.getViewportInfo(wavesurfer)
+      if (viewport) {
+        // Convert from audio time to current viewport position
+        const relativeTime = (refPoint.time - viewport.startTime) / viewport.duration
+        x = relativeTime * width
+        const halfHeight = height / 2
+        upperY = halfHeight - (refPoint.upperAmplitude * halfHeight)
+        lowerY = halfHeight - (refPoint.lowerAmplitude * halfHeight)
+      } else {
+        // Fallback to original calculation
+        x = relX * width
+        upperY = upperRelY * height
+        lowerY = lowerRelY * height
+      }
+    } else {
+      // Original calculation for backward compatibility
+      x = relX * width
+      upperY = upperRelY * height
+      lowerY = lowerRelY * height
+    }
 
     // Create upper point
     const upperPoint = svg.createSVGPoint()
@@ -212,8 +344,8 @@ class DualPolyline extends EventEmitter<{
     this.upperPolyPoints.set(refPoint, { polyPoint: upperPoint, circle: upperCircle })
     this.lowerPolyPoints.set(refPoint, { polyPoint: lowerPoint, circle: lowerCircle })
 
-    this.makeDraggable(upperCircle, refPoint, true)
-    this.makeDraggable(lowerCircle, refPoint, false)
+    this.makeDraggable(upperCircle, refPoint, true, wavesurfer)
+    this.makeDraggable(lowerCircle, refPoint, false, wavesurfer)
     this.updateFillArea()
   }
 
@@ -245,7 +377,7 @@ class DualPolyline extends EventEmitter<{
     }, this.svg) as SVGEllipseElement
   }
 
-  private makeDraggable(circle: SVGEllipseElement, refPoint: WaveEnvelopePoint, isUpper: boolean) {
+  private makeDraggable(circle: SVGEllipseElement, refPoint: WaveEnvelopePoint, isUpper: boolean, wavesurfer?: any) {
     const pointData = isUpper ? this.upperPolyPoints.get(refPoint) : this.lowerPolyPoints.get(refPoint)
     if (!pointData) return
 
@@ -275,9 +407,19 @@ class DualPolyline extends EventEmitter<{
             otherData.circle.setAttribute('cx', newX.toString())
           }
 
-          // Update reference point
+          // Update reference point with proper audio time conversion
           const halfHeight = height / 2
-          refPoint.time = (newX / width) * (this.getAudioDuration() || 1)
+          
+          if (wavesurfer) {
+            const viewport = this.getViewportInfo(wavesurfer)
+            if (viewport) {
+              const relativeViewportX = newX / width
+              const audioTime = viewport.startTime + (relativeViewportX * viewport.duration)
+              refPoint.time = Math.max(0, Math.min(viewport.totalDuration, audioTime))
+            }
+          } else {
+            refPoint.time = (newX / width) * (this.getAudioDuration() || 1)
+          }
           
           if (isUpper) {
             refPoint.upperAmplitude = (halfHeight - newY) / halfHeight
@@ -380,6 +522,9 @@ class DualPolyline extends EventEmitter<{
   }
 
   destroy() {
+    if (this.updateThrottleTimeout) {
+      clearTimeout(this.updateThrottleTimeout)
+    }
     this.subscriptions.forEach((unsubscribe) => unsubscribe())
     this.upperPolyPoints.clear()
     this.lowerPolyPoints.clear()
@@ -684,12 +829,25 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
         }
       }),
 
+      // Instead of recreating on redraw, just update the viewport
       this.wavesurfer.on('redraw', () => {
-        this.initDualPolyline()
-        this.points.forEach((point) => {
-          const duration = this.wavesurfer?.getDuration()
-          if (duration) this.addPolyPoint(point, duration)
-        })
+        if (this.dualPolyline) {
+          this.dualPolyline.updateViewBox(this.wavesurfer)
+        }
+      }),
+
+      // Handle zoom events
+      this.wavesurfer.on('zoom', (minPxPerSec) => {
+        if (this.dualPolyline) {
+          this.dualPolyline.updateViewBox(this.wavesurfer)
+        }
+      }),
+
+      // Handle scroll events
+      this.wavesurfer.on('scroll', (visibleStartTime, visibleEndTime) => {
+        if (this.dualPolyline) {
+          this.dualPolyline.updateViewBox(this.wavesurfer)
+        }
       }),
 
       this.wavesurfer.on('timeupdate', (time) => {
@@ -717,15 +875,8 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
 
     this.subscriptions.push(
       this.dualPolyline.on('point-move', (point, relativeX, upperY, lowerY) => {
-        const duration = this.wavesurfer?.getDuration() || 0
-        point.time = relativeX * duration
-        
-        const height = this.dualPolyline?.getWaveformChannelHeight() || 128
-        const halfHeight = height / 2
-        
-        point.upperAmplitude = (halfHeight - (upperY * height)) / halfHeight
-        point.lowerAmplitude = (halfHeight - (lowerY * height)) / halfHeight
-
+        // Point coordinates are already updated in the draggable handler
+        // Just emit the points change
         this.emitPoints()
       }),
 
@@ -735,7 +886,9 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
 
       this.dualPolyline.on('point-create', (relativeX, upperY, lowerY) => {
         const duration = this.wavesurfer?.getDuration() || 0
-        const audioTime = relativeX * duration
+        
+                 // Convert viewport coordinates to audio time if zoomed
+         let audioTime = relativeX * duration
         
         const height = this.dualPolyline?.getWaveformChannelHeight() || 128
         const halfHeight = height / 2
@@ -759,7 +912,7 @@ class WaveEnvelopePlugin extends BasePlugin<WaveEnvelopePluginEvents, WaveEnvelo
     const upperRelY = (halfHeight - (point.upperAmplitude * halfHeight)) / height
     const lowerRelY = (halfHeight - (point.lowerAmplitude * halfHeight)) / height
     
-    this.dualPolyline.addPolyPoint(relativeX, upperRelY, lowerRelY, point)
+    this.dualPolyline.addPolyPoint(relativeX, upperRelY, lowerRelY, point, this.wavesurfer)
   }
 }
 
