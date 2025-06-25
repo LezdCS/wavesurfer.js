@@ -1,11 +1,13 @@
 import EventEmitter from './event-emitter.js';
 /** Base class for wavesurfer plugins */
 export class BasePlugin extends EventEmitter {
+    wavesurfer;
+    subscriptions = [];
+    options;
+    isDestroyed = false;
     /** Create a plugin instance */
     constructor(options) {
         super();
-        this.subscriptions = [];
-        this.isDestroyed = false;
         this.options = options;
     }
     /** Called after this.wavesurfer is available */

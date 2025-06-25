@@ -1,1 +1,207 @@
-class t{constructor(){this.listeners={}}on(t,e,i){if(this.listeners[t]||(this.listeners[t]=new Set),this.listeners[t].add(e),null==i?void 0:i.once){const i=()=>{this.un(t,i),this.un(t,e)};return this.on(t,i),i}return()=>this.un(t,e)}un(t,e){var i;null===(i=this.listeners[t])||void 0===i||i.delete(e)}once(t,e){return this.on(t,e,{once:!0})}unAll(){this.listeners={}}emit(t,...e){this.listeners[t]&&this.listeners[t].forEach((t=>t(...e)))}}class e extends t{constructor(t){super(),this.subscriptions=[],this.isDestroyed=!1,this.options=t}onInit(){}_init(t){this.isDestroyed&&(this.subscriptions=[],this.isDestroyed=!1),this.wavesurfer=t,this.onInit()}destroy(){this.emit("destroy"),this.subscriptions.forEach((t=>t())),this.subscriptions=[],this.isDestroyed=!0,this.wavesurfer=void 0}}function i(t,e){const s=e.xmlns?document.createElementNS(e.xmlns,t):document.createElement(t);for(const[t,n]of Object.entries(e))if("children"===t&&n)for(const[t,e]of Object.entries(n))e instanceof Node?s.appendChild(e):"string"==typeof e?s.appendChild(document.createTextNode(e)):s.appendChild(i(t,e));else"style"===t?Object.assign(s.style,n):"textContent"===t?s.textContent=n:s.setAttribute(t,n.toString());return s}function s(t,e,s){return i(t,e||{})}const n={height:20,timeOffset:0,formatTimeCallback:t=>{if(t/60>1){return`${Math.floor(t/60)}:${`${(t=Math.round(t%60))<10?"0":""}${t}`}`}return`${Math.round(1e3*t)/1e3}`}};class r extends e{constructor(t){super(t||{}),this.options=Object.assign({},n,t),this.timelineWrapper=this.initTimelineWrapper()}static create(t){return new r(t)}onInit(){var t;if(!this.wavesurfer)throw Error("WaveSurfer is not initialized");let e=this.wavesurfer.getWrapper();if(this.options.container instanceof HTMLElement)e=this.options.container;else if("string"==typeof this.options.container){const t=document.querySelector(this.options.container);if(!t)throw Error(`No Timeline container found matching ${this.options.container}`);e=t}this.options.insertPosition?(e.firstElementChild||e).insertAdjacentElement(this.options.insertPosition,this.timelineWrapper):e.appendChild(this.timelineWrapper),this.subscriptions.push(this.wavesurfer.on("redraw",(()=>this.initTimeline()))),((null===(t=this.wavesurfer)||void 0===t?void 0:t.getDuration())||this.options.duration)&&this.initTimeline()}destroy(){this.timelineWrapper.remove(),super.destroy()}initTimelineWrapper(){return s("div",{part:"timeline-wrapper",style:{pointerEvents:"none"}})}defaultTimeInterval(t){return t>=25?1:5*t>=25?5:15*t>=25?15:60*Math.ceil(.5/t)}defaultPrimaryLabelInterval(t){return t>=25?10:5*t>=25?6:4}defaultSecondaryLabelInterval(t){return t>=25?5:2}virtualAppend(t,e,i){let s=!1;const n=(n,r)=>{if(!this.wavesurfer)return;const o=i.clientWidth,l=t>n&&t+o<r;l!==s&&(s=l,l?e.appendChild(i):i.remove())};if(!this.wavesurfer)return;const r=this.wavesurfer.getScroll(),o=r+this.wavesurfer.getWidth();n(r,o),this.subscriptions.push(this.wavesurfer.on("scroll",((t,e,i,s)=>{n(i,s)})))}initTimeline(){var t,e,i,n,r,o,l,a;const h=null!==(i=null!==(e=null===(t=this.wavesurfer)||void 0===t?void 0:t.getDuration())&&void 0!==e?e:this.options.duration)&&void 0!==i?i:0,p=((null===(n=this.wavesurfer)||void 0===n?void 0:n.getWrapper().scrollWidth)||this.timelineWrapper.scrollWidth)/h,u=null!==(r=this.options.timeInterval)&&void 0!==r?r:this.defaultTimeInterval(p),d=null!==(o=this.options.primaryLabelInterval)&&void 0!==o?o:this.defaultPrimaryLabelInterval(p),c=this.options.primaryLabelSpacing,f=null!==(l=this.options.secondaryLabelInterval)&&void 0!==l?l:this.defaultSecondaryLabelInterval(p),v=this.options.secondaryLabelSpacing,m="beforebegin"===this.options.insertPosition,y=s("div",{style:Object.assign({height:`${this.options.height}px`,overflow:"hidden",fontSize:this.options.height/2+"px",whiteSpace:"nowrap"},m?{position:"absolute",top:"0",left:"0",right:"0",zIndex:"2"}:{position:"relative"})});y.setAttribute("part","timeline"),"string"==typeof this.options.style?y.setAttribute("style",y.getAttribute("style")+this.options.style):"object"==typeof this.options.style&&Object.assign(y.style,this.options.style);const b=s("div",{style:{width:"0",height:"50%",display:"flex",flexDirection:"column",justifyContent:m?"flex-start":"flex-end",top:m?"0":"auto",bottom:m?"auto":"0",overflow:"visible",borderLeft:"1px solid currentColor",opacity:`${null!==(a=this.options.secondaryLabelOpacity)&&void 0!==a?a:.25}`,position:"absolute",zIndex:"1"}});for(let t=0,e=0;t<h;t+=u,e++){const i=b.cloneNode(),s=Math.round(100*t)%Math.round(100*d)==0||c&&e%c==0,n=Math.round(100*t)%Math.round(100*f)==0||v&&e%v==0;(s||n)&&(i.style.height="100%",i.style.textIndent="3px",i.textContent=this.options.formatTimeCallback(t),s&&(i.style.opacity="1"));const r=s?"primary":n?"secondary":"tick";i.setAttribute("part",`timeline-notch timeline-notch-${r}`);const o=Math.round(100*(t+this.options.timeOffset))/100*p;i.style.left=`${o}px`,this.virtualAppend(o,y,i)}this.timelineWrapper.innerHTML="",this.timelineWrapper.appendChild(y),this.emit("ready")}}export{r as default};
+/**
+ * The Timeline plugin adds timestamps and notches under the waveform.
+ */
+import BasePlugin from '../base-plugin.js';
+import createElement from '../dom.js';
+const defaultOptions = {
+    height: 20,
+    timeOffset: 0,
+    formatTimeCallback: (seconds) => {
+        if (seconds / 60 > 1) {
+            // calculate minutes and seconds from seconds count
+            const minutes = Math.floor(seconds / 60);
+            seconds = Math.round(seconds % 60);
+            const paddedSeconds = `${seconds < 10 ? '0' : ''}${seconds}`;
+            return `${minutes}:${paddedSeconds}`;
+        }
+        const rounded = Math.round(seconds * 1000) / 1000;
+        return `${rounded}`;
+    },
+};
+class TimelinePlugin extends BasePlugin {
+    timelineWrapper;
+    options;
+    constructor(options) {
+        super(options || {});
+        this.options = Object.assign({}, defaultOptions, options);
+        this.timelineWrapper = this.initTimelineWrapper();
+    }
+    static create(options) {
+        return new TimelinePlugin(options);
+    }
+    /** Called by wavesurfer, don't call manually */
+    onInit() {
+        if (!this.wavesurfer) {
+            throw Error('WaveSurfer is not initialized');
+        }
+        let container = this.wavesurfer.getWrapper();
+        if (this.options.container instanceof HTMLElement) {
+            container = this.options.container;
+        }
+        else if (typeof this.options.container === 'string') {
+            const el = document.querySelector(this.options.container);
+            if (!el)
+                throw Error(`No Timeline container found matching ${this.options.container}`);
+            container = el;
+        }
+        if (this.options.insertPosition) {
+            ;
+            (container.firstElementChild || container).insertAdjacentElement(this.options.insertPosition, this.timelineWrapper);
+        }
+        else {
+            container.appendChild(this.timelineWrapper);
+        }
+        this.subscriptions.push(this.wavesurfer.on('redraw', () => this.initTimeline()));
+        if (this.wavesurfer?.getDuration() || this.options.duration) {
+            this.initTimeline();
+        }
+    }
+    /** Unmount */
+    destroy() {
+        this.timelineWrapper.remove();
+        super.destroy();
+    }
+    initTimelineWrapper() {
+        return createElement('div', { part: 'timeline-wrapper', style: { pointerEvents: 'none' } });
+    }
+    // Return how many seconds should be between each notch
+    defaultTimeInterval(pxPerSec) {
+        if (pxPerSec >= 25) {
+            return 1;
+        }
+        else if (pxPerSec * 5 >= 25) {
+            return 5;
+        }
+        else if (pxPerSec * 15 >= 25) {
+            return 15;
+        }
+        return Math.ceil(0.5 / pxPerSec) * 60;
+    }
+    // Return the cadence of notches that get labels in the primary color.
+    defaultPrimaryLabelInterval(pxPerSec) {
+        if (pxPerSec >= 25) {
+            return 10;
+        }
+        else if (pxPerSec * 5 >= 25) {
+            return 6;
+        }
+        else if (pxPerSec * 15 >= 25) {
+            return 4;
+        }
+        return 4;
+    }
+    // Return the cadence of notches that get labels in the secondary color.
+    defaultSecondaryLabelInterval(pxPerSec) {
+        if (pxPerSec >= 25) {
+            return 5;
+        }
+        else if (pxPerSec * 5 >= 25) {
+            return 2;
+        }
+        else if (pxPerSec * 15 >= 25) {
+            return 2;
+        }
+        return 2;
+    }
+    virtualAppend(start, container, element) {
+        let wasVisible = false;
+        const renderIfVisible = (scrollLeft, scrollRight) => {
+            if (!this.wavesurfer)
+                return;
+            const width = element.clientWidth;
+            const isVisible = start > scrollLeft && start + width < scrollRight;
+            if (isVisible === wasVisible)
+                return;
+            wasVisible = isVisible;
+            if (isVisible) {
+                container.appendChild(element);
+            }
+            else {
+                element.remove();
+            }
+        };
+        if (!this.wavesurfer)
+            return;
+        const scrollLeft = this.wavesurfer.getScroll();
+        const scrollRight = scrollLeft + this.wavesurfer.getWidth();
+        renderIfVisible(scrollLeft, scrollRight);
+        this.subscriptions.push(this.wavesurfer.on('scroll', (_start, _end, scrollLeft, scrollRight) => {
+            renderIfVisible(scrollLeft, scrollRight);
+        }));
+    }
+    initTimeline() {
+        const duration = this.wavesurfer?.getDuration() ?? this.options.duration ?? 0;
+        const pxPerSec = (this.wavesurfer?.getWrapper().scrollWidth || this.timelineWrapper.scrollWidth) / duration;
+        const timeInterval = this.options.timeInterval ?? this.defaultTimeInterval(pxPerSec);
+        const primaryLabelInterval = this.options.primaryLabelInterval ?? this.defaultPrimaryLabelInterval(pxPerSec);
+        const primaryLabelSpacing = this.options.primaryLabelSpacing;
+        const secondaryLabelInterval = this.options.secondaryLabelInterval ?? this.defaultSecondaryLabelInterval(pxPerSec);
+        const secondaryLabelSpacing = this.options.secondaryLabelSpacing;
+        const isTop = this.options.insertPosition === 'beforebegin';
+        const timeline = createElement('div', {
+            style: {
+                height: `${this.options.height}px`,
+                overflow: 'hidden',
+                fontSize: `${this.options.height / 2}px`,
+                whiteSpace: 'nowrap',
+                ...(isTop
+                    ? {
+                        position: 'absolute',
+                        top: '0',
+                        left: '0',
+                        right: '0',
+                        zIndex: '2',
+                    }
+                    : {
+                        position: 'relative',
+                    }),
+            },
+        });
+        timeline.setAttribute('part', 'timeline');
+        if (typeof this.options.style === 'string') {
+            timeline.setAttribute('style', timeline.getAttribute('style') + this.options.style);
+        }
+        else if (typeof this.options.style === 'object') {
+            Object.assign(timeline.style, this.options.style);
+        }
+        const notchEl = createElement('div', {
+            style: {
+                width: '0',
+                height: '50%',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: isTop ? 'flex-start' : 'flex-end',
+                top: isTop ? '0' : 'auto',
+                bottom: isTop ? 'auto' : '0',
+                overflow: 'visible',
+                borderLeft: '1px solid currentColor',
+                opacity: `${this.options.secondaryLabelOpacity ?? 0.25}`,
+                position: 'absolute',
+                zIndex: '1',
+            },
+        });
+        for (let i = 0, notches = 0; i < duration; i += timeInterval, notches++) {
+            const notch = notchEl.cloneNode();
+            const isPrimary = Math.round(i * 100) % Math.round(primaryLabelInterval * 100) === 0 ||
+                (primaryLabelSpacing && notches % primaryLabelSpacing === 0);
+            const isSecondary = Math.round(i * 100) % Math.round(secondaryLabelInterval * 100) === 0 ||
+                (secondaryLabelSpacing && notches % secondaryLabelSpacing === 0);
+            if (isPrimary || isSecondary) {
+                notch.style.height = '100%';
+                notch.style.textIndent = '3px';
+                notch.textContent = this.options.formatTimeCallback(i);
+                if (isPrimary)
+                    notch.style.opacity = '1';
+            }
+            const mode = isPrimary ? 'primary' : isSecondary ? 'secondary' : 'tick';
+            notch.setAttribute('part', `timeline-notch timeline-notch-${mode}`);
+            const offset = Math.round((i + this.options.timeOffset) * 100) / 100 * pxPerSec;
+            notch.style.left = `${offset}px`;
+            this.virtualAppend(offset, timeline, notch);
+        }
+        this.timelineWrapper.innerHTML = '';
+        this.timelineWrapper.appendChild(timeline);
+        this.emit('ready');
+    }
+}
+export default TimelinePlugin;

@@ -1,12 +1,3 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 import BasePlugin from './base-plugin.js';
 import Decoder from './decoder.js';
 import * as dom from './dom.js';
@@ -28,6 +19,17 @@ const defaultOptions = {
     sampleRate: 8000,
 };
 class WaveSurfer extends Player {
+    options;
+    renderer;
+    timer;
+    plugins = [];
+    decodedData = null;
+    stopAtPosition = null;
+    subscriptions = [];
+    mediaSubscriptions = [];
+    abortController = null;
+    static BasePlugin = BasePlugin;
+    static dom = dom;
     /** Create a new WaveSurfer instance */
     static create(options) {
         return new WaveSurfer(options);
@@ -42,12 +44,6 @@ class WaveSurfer extends Player {
             autoplay: options.autoplay,
             playbackRate: options.audioRate,
         });
-        this.plugins = [];
-        this.decodedData = null;
-        this.stopAtPosition = null;
-        this.subscriptions = [];
-        this.mediaSubscriptions = [];
-        this.abortController = null;
         this.options = Object.assign({}, defaultOptions, options);
         this.timer = new Timer();
         const audioElement = media ? undefined : this.getMediaElement();
@@ -114,8 +110,7 @@ class WaveSurfer extends Player {
         }), this.onMediaEvent('seeking', () => {
             this.emit('seeking', this.getCurrentTime());
         }), this.onMediaEvent('error', () => {
-            var _a;
-            this.emit('error', ((_a = this.getMediaElement().error) !== null && _a !== void 0 ? _a : new Error('Media error')));
+            this.emit('error', (this.getMediaElement().error ?? new Error('Media error')));
             this.stopAtPosition = null;
         }));
     }
@@ -183,8 +178,7 @@ class WaveSurfer extends Player {
         }
     }
     initPlugins() {
-        var _a;
-        if (!((_a = this.options.plugins) === null || _a === void 0 ? void 0 : _a.length))
+        if (!this.options.plugins?.length)
             return;
         this.options.plugins.forEach((plugin) => {
             this.registerPlugin(plugin);
@@ -258,91 +252,84 @@ class WaveSurfer extends Player {
     getActivePlugins() {
         return this.plugins;
     }
-    loadAudio(url, blob, channelData, duration) {
-        return __awaiter(this, void 0, void 0, function* () {
-            var _a;
-            this.emit('load', url);
-            if (!this.options.media && this.isPlaying())
-                this.pause();
-            this.decodedData = null;
-            this.stopAtPosition = null;
-            // Fetch the entire audio as a blob if pre-decoded data is not provided
-            if (!blob && !channelData) {
-                const fetchParams = this.options.fetchParams || {};
-                if (window.AbortController && !fetchParams.signal) {
-                    this.abortController = new AbortController();
-                    fetchParams.signal = (_a = this.abortController) === null || _a === void 0 ? void 0 : _a.signal;
-                }
-                const onProgress = (percentage) => this.emit('loading', percentage);
-                blob = yield Fetcher.fetchBlob(url, onProgress, fetchParams);
-                const overridenMimeType = this.options.blobMimeType;
-                if (overridenMimeType) {
-                    blob = new Blob([blob], { type: overridenMimeType });
-                }
+    async loadAudio(url, blob, channelData, duration) {
+        this.emit('load', url);
+        if (!this.options.media && this.isPlaying())
+            this.pause();
+        this.decodedData = null;
+        this.stopAtPosition = null;
+        // Fetch the entire audio as a blob if pre-decoded data is not provided
+        if (!blob && !channelData) {
+            const fetchParams = this.options.fetchParams || {};
+            if (window.AbortController && !fetchParams.signal) {
+                this.abortController = new AbortController();
+                fetchParams.signal = this.abortController?.signal;
             }
-            if (url == '') {
-                // If no URL is provided, clear the mediaelement source
-                this.getMediaElement().removeAttribute('src');
+            const onProgress = (percentage) => this.emit('loading', percentage);
+            blob = await Fetcher.fetchBlob(url, onProgress, fetchParams);
+            const overridenMimeType = this.options.blobMimeType;
+            if (overridenMimeType) {
+                blob = new Blob([blob], { type: overridenMimeType });
+            }
+        }
+        if (url == '') {
+            // If no URL is provided, clear the mediaelement source
+            this.getMediaElement().removeAttribute('src');
+        }
+        else {
+            // Set the mediaelement source
+            this.setSrc(url, blob);
+        }
+        // Wait for the audio duration
+        const audioDuration = await new Promise((resolve) => {
+            const staticDuration = duration || this.getDuration();
+            if (staticDuration) {
+                resolve(staticDuration);
             }
             else {
-                // Set the mediaelement source
-                this.setSrc(url, blob);
+                this.mediaSubscriptions.push(this.onMediaEvent('loadedmetadata', () => resolve(this.getDuration()), { once: true }));
             }
-            // Wait for the audio duration
-            const audioDuration = yield new Promise((resolve) => {
-                const staticDuration = duration || this.getDuration();
-                if (staticDuration) {
-                    resolve(staticDuration);
-                }
-                else {
-                    this.mediaSubscriptions.push(this.onMediaEvent('loadedmetadata', () => resolve(this.getDuration()), { once: true }));
-                }
-            });
-            // Set the duration if the player is a WebAudioPlayer without a URL
-            if (!url && !blob) {
-                const media = this.getMediaElement();
-                if (media instanceof WebAudioPlayer) {
-                    media.duration = audioDuration;
-                }
-            }
-            // Decode the audio data or use user-provided peaks
-            if (channelData) {
-                this.decodedData = Decoder.createBuffer(channelData, audioDuration || 0);
-            }
-            else if (blob) {
-                const arrayBuffer = yield blob.arrayBuffer();
-                this.decodedData = yield Decoder.decode(arrayBuffer, this.options.sampleRate);
-            }
-            if (this.decodedData) {
-                this.emit('decode', this.getDuration());
-                this.renderer.render(this.decodedData);
-            }
-            this.emit('ready', this.getDuration());
         });
+        // Set the duration if the player is a WebAudioPlayer without a URL
+        if (!url && !blob) {
+            const media = this.getMediaElement();
+            if (media instanceof WebAudioPlayer) {
+                media.duration = audioDuration;
+            }
+        }
+        // Decode the audio data or use user-provided peaks
+        if (channelData) {
+            this.decodedData = Decoder.createBuffer(channelData, audioDuration || 0);
+        }
+        else if (blob) {
+            const arrayBuffer = await blob.arrayBuffer();
+            this.decodedData = await Decoder.decode(arrayBuffer, this.options.sampleRate);
+        }
+        if (this.decodedData) {
+            this.emit('decode', this.getDuration());
+            this.renderer.render(this.decodedData);
+        }
+        this.emit('ready', this.getDuration());
     }
     /** Load an audio file by URL, with optional pre-decoded audio data */
-    load(url, channelData, duration) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                return yield this.loadAudio(url, undefined, channelData, duration);
-            }
-            catch (err) {
-                this.emit('error', err);
-                throw err;
-            }
-        });
+    async load(url, channelData, duration) {
+        try {
+            return await this.loadAudio(url, undefined, channelData, duration);
+        }
+        catch (err) {
+            this.emit('error', err);
+            throw err;
+        }
     }
     /** Load an audio blob */
-    loadBlob(blob, channelData, duration) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                return yield this.loadAudio('', blob, channelData, duration);
-            }
-            catch (err) {
-                this.emit('error', err);
-                throw err;
-            }
-        });
+    async loadBlob(blob, channelData, duration) {
+        try {
+            return await this.loadAudio('', blob, channelData, duration);
+        }
+        catch (err) {
+            this.emit('error', err);
+            throw err;
+        }
     }
     /** Zoom the waveform by a given pixels-per-second factor */
     zoom(minPxPerSec) {
@@ -357,7 +344,7 @@ class WaveSurfer extends Player {
         return this.decodedData;
     }
     /** Get decoded peaks */
-    exportPeaks({ channels = 2, maxLength = 8000, precision = 10000 } = {}) {
+    exportPeaks({ channels = 2, maxLength = 8000, precision = 10_000 } = {}) {
         if (!this.decodedData) {
             throw new Error('The audio has not been decoded yet');
         }
@@ -407,31 +394,24 @@ class WaveSurfer extends Player {
         this.setTime(time);
     }
     /** Start playing the audio */
-    play(start, end) {
-        const _super = Object.create(null, {
-            play: { get: () => super.play }
-        });
-        return __awaiter(this, void 0, void 0, function* () {
-            if (start != null) {
-                this.setTime(start);
+    async play(start, end) {
+        if (start != null) {
+            this.setTime(start);
+        }
+        const playResult = await super.play();
+        if (end != null) {
+            if (this.media instanceof WebAudioPlayer) {
+                this.media.stopAt(end);
             }
-            const playResult = yield _super.play.call(this);
-            if (end != null) {
-                if (this.media instanceof WebAudioPlayer) {
-                    this.media.stopAt(end);
-                }
-                else {
-                    this.stopAtPosition = end;
-                }
+            else {
+                this.stopAtPosition = end;
             }
-            return playResult;
-        });
+        }
+        return playResult;
     }
     /** Play or pause the audio */
-    playPause() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return this.isPlaying() ? this.pause() : this.play();
-        });
+    async playPause() {
+        return this.isPlaying() ? this.pause() : this.play();
     }
     /** Stop the audio and go to the beginning */
     stop() {
@@ -452,16 +432,13 @@ class WaveSurfer extends Player {
         super.setMediaElement(element);
         this.initPlayerEvents();
     }
-    exportImage() {
-        return __awaiter(this, arguments, void 0, function* (format = 'image/png', quality = 1, type = 'dataURL') {
-            return this.renderer.exportImage(format, quality, type);
-        });
+    async exportImage(format = 'image/png', quality = 1, type = 'dataURL') {
+        return this.renderer.exportImage(format, quality, type);
     }
     /** Unmount wavesurfer */
     destroy() {
-        var _a;
         this.emit('destroy');
-        (_a = this.abortController) === null || _a === void 0 ? void 0 : _a.abort();
+        this.abortController?.abort();
         this.plugins.forEach((plugin) => plugin.destroy());
         this.subscriptions.forEach((unsubscribe) => unsubscribe());
         this.unsubscribePlayerEvents();
@@ -470,6 +447,4 @@ class WaveSurfer extends Player {
         super.destroy();
     }
 }
-WaveSurfer.BasePlugin = BasePlugin;
-WaveSurfer.dom = dom;
 export default WaveSurfer;
