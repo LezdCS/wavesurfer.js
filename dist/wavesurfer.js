@@ -221,9 +221,11 @@ class WaveSurfer extends Player {
         plugin._init(this);
         this.plugins.push(plugin);
         // Unregister plugin on destroy
-        this.subscriptions.push(plugin.once('destroy', () => {
+        const unsubscribe = plugin.once('destroy', () => {
             this.plugins = this.plugins.filter((p) => p !== plugin);
-        }));
+            this.subscriptions = this.subscriptions.filter((fn) => fn !== unsubscribe);
+        });
+        this.subscriptions.push(unsubscribe);
         return plugin;
     }
     /** Unregister a wavesurfer.js plugin */
@@ -278,8 +280,14 @@ class WaveSurfer extends Player {
                     blob = new Blob([blob], { type: overridenMimeType });
                 }
             }
-            // Set the mediaelement source
-            this.setSrc(url, blob);
+            if (url == '') {
+                // If no URL is provided, clear the mediaelement source
+                this.getMediaElement().removeAttribute('src');
+            }
+            else {
+                // Set the mediaelement source
+                this.setSrc(url, blob);
+            }
             // Wait for the audio duration
             const audioDuration = yield new Promise((resolve) => {
                 const staticDuration = duration || this.getDuration();
