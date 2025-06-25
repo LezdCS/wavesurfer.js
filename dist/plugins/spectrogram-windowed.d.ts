@@ -108,6 +108,12 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private createFilterBank;
     private applyFilterBank;
     private _onWrapperClick;
+    private freqType;
+    private unitType;
+    private hzToScale;
+    private scaleToHz;
+    private getLabelFrequency;
+    private loadLabels;
     render(audioData: AudioBuffer): Promise<void>;
     destroy(): void;
 }
