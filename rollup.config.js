@@ -44,6 +44,16 @@ export default [
     plugins: [dts()],
   },
 
+  // Worker files
+  {
+    input: 'src/plugins/spectrogram-windowed.worker.js',
+    output: {
+      file: 'dist/plugins/spectrogram-windowed.worker.js',
+      format: 'iife',
+    },
+    plugins: [terser({ format: { comments: false } })],
+  },
+
   // Wavesurfer plugins
   ...glob
     .sync('src/plugins/*.ts')

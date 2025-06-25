@@ -43,10 +43,15 @@ export type WindowedSpectrogramPluginOptions = {
     windowSize?: number;
     /** Buffer size in pixels (how much extra to render beyond viewport) */
     bufferSize?: number;
+    /** Enable progressive background loading of all segments (default: true) */
+    progressiveLoading?: boolean;
+    /** Use web worker for FFT calculations (default: true) */
+    useWebWorker?: boolean;
 };
 export type WindowedSpectrogramPluginEvents = BasePluginEvents & {
     ready: [];
     click: [relativeX: number];
+    'progress': [progress: number];
 };
 declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEvents, WindowedSpectrogramPluginOptions> {
     private container;
@@ -66,6 +71,8 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private scale;
     private windowSize;
     private bufferSize;
+    private progressiveLoading;
+    private useWebWorker;
     private segments;
     private buffer;
     private currentPosition;
@@ -77,24 +84,41 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private numLogFilters;
     private numBarkFilters;
     private numErbFilters;
+    private progressiveLoadTimeout;
+    private isProgressiveLoading;
+    private worker;
+    private workerPromises;
     static create(options?: WindowedSpectrogramPluginOptions): WindowedSpectrogramPlugin;
     constructor(options: WindowedSpectrogramPluginOptions);
+    private initializeWorker;
     private setupColorMap;
     onInit(): void;
     private createWrapper;
     private createCanvas;
     private handleRedraw;
     private updateSegmentPositions;
-    private redrawSegmentCanvas;
+    private scheduleSegmentQualityUpdate;
+    private qualityUpdateTimeout;
+    private updateVisibleSegmentQuality;
+    private getScrollLeft;
+    private getViewportWidth;
     private handleScroll;
     private updatePosition;
     private scheduleRender;
     private renderVisibleWindow;
     private generateSegments;
+    private findUncoveredTimeRanges;
+    private startProgressiveLoading;
+    private progressiveLoadNextSegment;
+    private _stopProgressiveLoading;
+    /** Get the current loading progress as a percentage (0-100) */
+    getLoadingProgress(): number;
+    private emitProgress;
     private calculateFrequencies;
+    private calculateFrequenciesWithWorker;
+    private calculateFrequenciesMainThread;
     private renderSegment;
     private renderChannelToCanvas;
-    private cleanupOldSegments;
     private clearAllSegments;
     private getFilterBank;
     private hzToMel;
@@ -119,5 +143,9 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private getWidth;
     private getWrapperWidth;
     private getPixelsPerSecond;
+    /** Stop progressive loading if it's currently running */
+    stopProgressiveLoading(): void;
+    /** Start progressive loading manually */
+    enableProgressiveLoading(): void;
 }
 export default WindowedSpectrogramPlugin;

@@ -253,11 +253,16 @@ export type WindowedSpectrogramPluginOptions = {
   windowSize?: number
   /** Buffer size in pixels (how much extra to render beyond viewport) */
   bufferSize?: number
+  /** Enable progressive background loading of all segments (default: true) */
+  progressiveLoading?: boolean
+  /** Use web worker for FFT calculations (default: true) */
+  useWebWorker?: boolean
 }
 
 export type WindowedSpectrogramPluginEvents = BasePluginEvents & {
   ready: []
   click: [relativeX: number]
+  'progress': [progress: number] // Progress from 0 to 1
 }
 
 /**
@@ -292,6 +297,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   // Windowing properties
   private windowSize: number // seconds
   private bufferSize: number // pixels
+  private progressiveLoading: boolean
+  private useWebWorker: boolean
   private segments: Map<string, FrequencySegment> = new Map()
   private buffer: AudioBuffer | null = null
   private currentPosition = 0 // current playback position in seconds
@@ -305,6 +312,14 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private numLogFilters: number
   private numBarkFilters: number
   private numErbFilters: number
+
+  // Progressive loading
+  private progressiveLoadTimeout: number | null = null
+  private isProgressiveLoading = false
+
+  // Web worker for FFT calculations
+  private worker: Worker | null = null
+  private workerPromises: Map<string, { resolve: Function, reject: Function }> = new Map()
 
   static create(options?: WindowedSpectrogramPluginOptions) {
     return new WindowedSpectrogramPlugin(options || {})
@@ -335,6 +350,12 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.windowSize = options.windowSize || 30 // 30 seconds window
     this.bufferSize = options.bufferSize || 5000 // 5000 pixels buffer
 
+    // Progressive loading (disabled by default to avoid system overload)
+    this.progressiveLoading = options.progressiveLoading === true
+
+    // Web worker (enabled by default)
+    this.useWebWorker = options.useWebWorker !== false
+
     // Filter banks
     this.numMelFilters = this.fftSamples / 2
     this.numLogFilters = this.fftSamples / 2
@@ -343,7 +364,48 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     this.createWrapper()
     this.createCanvas()
+    
+    // Initialize worker if enabled
+    if (this.useWebWorker) {
+      this.initializeWorker()
+    }
   }
+
+  private initializeWorker() {
+    try {
+      // Load worker from external file
+      this.worker = new Worker(new URL('./spectrogram-windowed.worker.js', import.meta.url))
+      
+      this.worker.onmessage = (e) => {
+        const { type, id, result, error } = e.data
+        
+        if (type === 'frequenciesResult') {
+          const promise = this.workerPromises.get(id)
+          if (promise) {
+            this.workerPromises.delete(id)
+            if (error) {
+              promise.reject(new Error(error))
+            } else {
+              promise.resolve(result)
+            }
+          }
+        }
+      }
+      
+      this.worker.onerror = (error) => {
+        console.error('Spectrogram worker error:', error)
+        // Fallback to main thread calculation
+        this.worker = null
+      }
+      
+      console.log('🔧 Spectrogram worker initialized from external file')
+    } catch (error) {
+      console.warn('Failed to initialize worker, falling back to main thread:', error)
+      this.worker = null
+    }
+  }
+
+
 
   private setupColorMap(colorMap?: WindowedSpectrogramPluginOptions['colorMap']) {
     if (colorMap && typeof colorMap !== 'string') {
@@ -488,6 +550,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     
     // Only update canvas positions if zoom changed, keep frequency data!
     if (oldPixelsPerSecond !== this.pixelsPerSecond && this.segments.size > 0) {
+      console.log(`🔄 Zoom changed: ${oldPixelsPerSecond.toFixed(1)} → ${this.pixelsPerSecond.toFixed(1)} px/s`)
       this.updateSegmentPositions(oldPixelsPerSecond, this.pixelsPerSecond)
     }
     
@@ -495,57 +558,151 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 
   private updateSegmentPositions(oldPxPerSec: number, newPxPerSec: number) {
+    console.log(`📐 Updating ${this.segments.size} segment positions without recalculating frequencies`)
+    
     for (const segment of this.segments.values()) {
       // Update pixel positions based on new zoom level
       segment.startPixel = segment.startTime * newPxPerSec
       segment.endPixel = segment.endTime * newPxPerSec
       
-      // Update canvas positioning and size
+      // Update canvas positioning and size WITHOUT recalculating frequencies
       if (segment.canvas) {
         const segmentWidth = segment.endPixel - segment.startPixel
         segment.canvas.style.left = `${segment.startPixel}px`
         segment.canvas.style.width = `${segmentWidth}px`
-        segment.canvas.width = Math.round(segmentWidth)
-        
-        // Redraw the canvas content at the new size
-        this.redrawSegmentCanvas(segment)
       }
+    }
+    
+    // Schedule a gentle re-render of visible segments only if zoom changed significantly
+    const zoomRatio = newPxPerSec / oldPxPerSec
+    if (zoomRatio < 0.5 || zoomRatio > 2.0) {
+      console.log(`📐 Significant zoom change (${zoomRatio.toFixed(2)}x), will re-render visible segments`)
+      this.scheduleSegmentQualityUpdate()
     }
   }
 
-  private async redrawSegmentCanvas(segment: FrequencySegment) {
-    if (!segment.canvas) return
-    
-    const ctx = segment.canvas.getContext('2d')
-    if (!ctx) return
-    
-    const segmentWidth = segment.endPixel - segment.startPixel
-    const totalHeight = this.height * segment.frequencies.length
-    
-    // Clear and redraw at new size
-    ctx.clearRect(0, 0, segment.canvas.width, segment.canvas.height)
-    
-    // Get frequency scaling parameters like the normal plugin
-    const freqFrom = this.buffer?.sampleRate ? this.buffer.sampleRate / 2 : 0
-    const freqMin = this.frequencyMin
-    const freqMax = this.frequencyMax || freqFrom
-    
-    // Render frequency data to canvas at new size with proper scaling
-    for (let c = 0; c < segment.frequencies.length; c++) {
-      await this.renderChannelToCanvas(
-        segment.frequencies[c], 
-        ctx, 
-        segmentWidth, 
-        this.height, 
-        c * this.height,
-        freqFrom,
-        freqMin,
-        freqMax
-      )
+  private scheduleSegmentQualityUpdate() {
+    // Debounce quality updates to avoid rapid re-renders during zoom
+    if (this.qualityUpdateTimeout) {
+      clearTimeout(this.qualityUpdateTimeout)
     }
+    
+    this.qualityUpdateTimeout = window.setTimeout(() => {
+      this.updateVisibleSegmentQuality()
+    }, 500) // Wait 500ms after zoom stops
+  }
+
+  private qualityUpdateTimeout: number | null = null
+
+  private async updateVisibleSegmentQuality() {
+    if (!this.buffer) return
+    
+    const wrapper = this.wavesurfer?.getWrapper()
+    if (!wrapper) return
+    
+    // Get current viewport
+    const scrollLeft = this.getScrollLeft(wrapper)
+    const viewportWidth = this.getViewportWidth(wrapper)
+    const pixelsPerSec = this.getPixelsPerSecond()
+    
+    const visibleStartTime = scrollLeft / pixelsPerSec
+    const visibleEndTime = (scrollLeft + viewportWidth) / pixelsPerSec
+    
+    console.log(`🔧 Updating quality for visible segments: ${visibleStartTime.toFixed(1)}s - ${visibleEndTime.toFixed(1)}s`)
+    
+    // Find segments that overlap with visible area
+    const visibleSegments = Array.from(this.segments.values()).filter(segment => 
+      segment.startTime < visibleEndTime && segment.endTime > visibleStartTime
+    )
+    
+    if (visibleSegments.length === 0) {
+      console.log(`  - No visible segments to update`)
+      return
+    }
+    
+    console.log(`  - Found ${visibleSegments.length} visible segments to update`)
+    
+    // Re-render only the visible segments with current zoom level
+    for (const segment of visibleSegments) {
+      if (segment.canvas) {
+        console.log(`  - Re-rendering segment ${segment.startTime.toFixed(1)}s - ${segment.endTime.toFixed(1)}s`)
+        await this.renderSegment(segment)
+      }
+    }
+    
+    console.log(`✅ Quality update complete for ${visibleSegments.length} segments`)
+  }
+
+  private getScrollLeft(wrapper: HTMLElement): number {
+    // Try multiple sources for scroll position
+    if (wrapper.scrollLeft) return wrapper.scrollLeft
+    if (wrapper.parentElement?.scrollLeft) return wrapper.parentElement.scrollLeft
+    if (document.documentElement.scrollLeft) return document.documentElement.scrollLeft
+    if (document.body.scrollLeft) return document.body.scrollLeft
+    if (window.scrollX) return window.scrollX
+    if (window.pageXOffset) return window.pageXOffset
+    
+    // Look for scrollable ancestors
+    let element = wrapper.parentElement
+    while (element) {
+      const computedStyle = window.getComputedStyle(element)
+      if (computedStyle.overflowX === 'scroll' || computedStyle.overflowX === 'auto') {
+        if (element.scrollLeft > 0) return element.scrollLeft
+      }
+      element = element.parentElement
+    }
+    
+    return 0
+  }
+
+  private getViewportWidth(wrapper: HTMLElement): number {
+    const wrapperWidth = wrapper.offsetWidth || wrapper.clientWidth
+    const parentWidth = wrapper.parentElement?.offsetWidth || wrapper.parentElement?.clientWidth
+    const windowWidth = window.innerWidth
+    
+    // Use the smallest reasonable width
+    if (parentWidth && parentWidth < wrapperWidth) return parentWidth
+    return Math.min(wrapperWidth || 800, windowWidth * 0.8)
   }
 
   private handleScroll() {
+    const wrapper = this.wavesurfer?.getWrapper()
+    
+    // Use the same scroll detection logic as renderVisibleWindow
+    let scrollLeft = 0
+    
+    if (wrapper?.scrollLeft) {
+      scrollLeft = wrapper.scrollLeft
+    } else if (wrapper?.parentElement?.scrollLeft) {
+      scrollLeft = wrapper.parentElement.scrollLeft
+    } else if (document.documentElement.scrollLeft || document.body.scrollLeft) {
+      scrollLeft = document.documentElement.scrollLeft || document.body.scrollLeft
+    } else if (window.scrollX || window.pageXOffset) {
+      scrollLeft = window.scrollX || window.pageXOffset
+    } else if (wrapper) {
+      // Look for scrollable ancestors
+      let element = wrapper.parentElement
+      while (element && scrollLeft === 0) {
+        const computedStyle = window.getComputedStyle(element)
+        if (computedStyle.overflowX === 'scroll' || computedStyle.overflowX === 'auto') {
+          if (element.scrollLeft > 0) {
+            scrollLeft = element.scrollLeft
+            break
+          }
+        }
+        element = element.parentElement
+      }
+    }
+    
+    const pixelsPerSec = this.getPixelsPerSecond()
+    const currentViewTime = scrollLeft / pixelsPerSec
+    
+    console.log(`🌊 Scroll event detected:`)
+    console.log(`  - Scroll position: ${scrollLeft}px`)
+    console.log(`  - Current view time: ${currentViewTime.toFixed(1)}s`)
+    console.log(`  - Pixels per second: ${pixelsPerSec}`)
+    console.log(`  - Scheduling render...`)
+    
     this.scheduleRender()
   }
 
@@ -571,24 +728,42 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       const wrapper = this.wavesurfer?.getWrapper()
       if (!wrapper) return
 
-      // Calculate visible time range
-      const scrollLeft = wrapper.scrollLeft || 0
-      const containerWidth = wrapper.clientWidth || 0
+      // Use helper functions for consistency
+      const scrollLeft = this.getScrollLeft(wrapper)
+      const actualViewportWidth = this.getViewportWidth(wrapper)
       const pixelsPerSec = this.getPixelsPerSecond()
+      const totalAudioDuration = this.buffer.duration
+
+      console.log(`📊 Debug windowed render:`)
+      console.log(`  - Scroll left: ${scrollLeft}px`)
+      console.log(`  - Viewport width: ${actualViewportWidth}px`)
+      console.log(`  - Pixels per second: ${pixelsPerSec}`)
+      console.log(`  - Total audio duration: ${totalAudioDuration.toFixed(1)}s`)
 
       const visibleStartTime = scrollLeft / pixelsPerSec
-      const visibleEndTime = (scrollLeft + containerWidth) / pixelsPerSec
+      const visibleEndTime = (scrollLeft + actualViewportWidth) / pixelsPerSec
 
-      // Add buffer around visible area
-      const bufferTime = this.bufferSize / pixelsPerSec
-      const windowStartTime = Math.max(0, visibleStartTime - bufferTime)
-      const windowEndTime = Math.min(this.buffer.duration, visibleEndTime + bufferTime)
+      console.log(`  - Visible time range: ${visibleStartTime.toFixed(1)}s - ${visibleEndTime.toFixed(1)}s`)
+      console.log(`  - Visible duration: ${(visibleEndTime - visibleStartTime).toFixed(1)}s`)
+
+      // Reasonable buffer time based on visible duration
+      const visibleDuration = visibleEndTime - visibleStartTime
+      let bufferTimeSeconds = Math.min(2, visibleDuration * 0.5) // Buffer is at most half the visible duration or 2s
+      
+      if (visibleDuration > 30) {
+        console.warn(`⚠️ Large visible duration: ${visibleDuration.toFixed(1)}s - limiting buffer`)
+        bufferTimeSeconds = 1 // Smaller buffer for very zoomed out views
+      }
+
+      const windowStartTime = Math.max(0, visibleStartTime - bufferTimeSeconds)
+      const windowEndTime = Math.min(this.buffer.duration, visibleEndTime + bufferTimeSeconds)
+
+      console.log(`🎯 Render window: ${windowStartTime.toFixed(1)}s - ${windowEndTime.toFixed(1)}s (${(windowEndTime - windowStartTime).toFixed(1)}s total, buffer: ${bufferTimeSeconds.toFixed(1)}s)`)
 
       // Generate segments for this window
       await this.generateSegments(windowStartTime, windowEndTime)
 
-      // Clean up old segments outside window
-      this.cleanupOldSegments(windowStartTime, windowEndTime)
+      // Don't clean up old segments - keep them all in memory for performance
 
     } finally {
       this.isRendering = false
@@ -598,39 +773,350 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private async generateSegments(startTime: number, endTime: number) {
     if (!this.buffer) return
 
-    const segmentDuration = 5 // 5 second segments
     const pixelsPerSec = this.getPixelsPerSecond()
+    const containerWidth = this.getWidth() // Get full container width
+    const totalAudioDuration = this.buffer.duration
 
-    // Create segments covering the time range
-    for (let time = startTime; time < endTime; time += segmentDuration) {
-      const segmentStart = time
-      const segmentEnd = Math.min(time + segmentDuration, endTime, this.buffer.duration)
-      const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`
+    // Calculate if this is a short audio that should fill the container
+    const totalAudioPixelWidth = totalAudioDuration * pixelsPerSec
+    const shouldFillContainer = totalAudioPixelWidth <= containerWidth && totalAudioDuration <= 60 // 60s max for fill mode
 
-      // Skip if segment already exists
-      if (this.segments.has(segmentKey)) continue
+    let segmentPixelWidth: number
+    let segmentDuration: number
 
-      // Calculate frequency data for this segment
-      const frequencies = await this.calculateFrequencies(segmentStart, segmentEnd)
-      
-      if (frequencies && frequencies.length > 0) {
-        const segment: FrequencySegment = {
-          startTime: segmentStart,
-          endTime: segmentEnd,
-          startPixel: segmentStart * pixelsPerSec,
-          endPixel: segmentEnd * pixelsPerSec,
-          frequencies: frequencies
+    if (shouldFillContainer) {
+      // For short audio, create one segment that fills the entire container width
+      segmentPixelWidth = containerWidth
+      segmentDuration = totalAudioDuration // Use full audio duration
+      console.log(`🎯 Short audio mode: filling container width ${containerWidth}px with ${totalAudioDuration.toFixed(1)}s audio`)
+    } else {
+      // For long audio, use windowing approach
+      segmentPixelWidth = 15000 // 15000 pixels per segment
+      segmentDuration = segmentPixelWidth / pixelsPerSec // Calculate duration based on pixel width
+      console.log(`🌊 Windowed mode: ${segmentPixelWidth}px segments = ${segmentDuration.toFixed(1)}s per segment`)
+    }
+
+    console.log(`🔧 Generating segments for ${startTime.toFixed(1)}s - ${endTime.toFixed(1)}s`)
+    console.log(`   - Segment size: ${segmentPixelWidth}px = ${segmentDuration.toFixed(1)}s per segment`)
+    console.log(`   - Current segments count: ${this.segments.size}`)
+    
+    // Show existing segments
+    if (this.segments.size > 0) {
+      console.log(`   - Existing segments:`)
+      for (const [key, segment] of this.segments) {
+        console.log(`     * ${key}: ${segment.startTime.toFixed(1)}s - ${segment.endTime.toFixed(1)}s`)
+      }
+    }
+
+    // Check coverage first to avoid duplicate work
+    const uncoveredRanges = this.findUncoveredTimeRanges(startTime, endTime, segmentDuration)
+    
+    if (uncoveredRanges.length === 0) {
+      console.log(`   - ✅ Time range ${startTime.toFixed(1)}s - ${endTime.toFixed(1)}s is already fully covered`)
+      return
+    }
+
+    console.log(`   - Found ${uncoveredRanges.length} uncovered ranges:`)
+    for (const range of uncoveredRanges) {
+      console.log(`     * ${range.start.toFixed(1)}s - ${range.end.toFixed(1)}s`)
+    }
+
+    let newSegmentsCreated = 0
+
+    // Only generate segments for uncovered ranges
+    for (const range of uncoveredRanges) {
+      // Create segments covering this uncovered range
+      for (let time = range.start; time < range.end; time += segmentDuration) {
+        const segmentStart = time
+        const segmentEnd = Math.min(time + segmentDuration, range.end, this.buffer.duration)
+        const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`
+
+        // Double-check if segment already exists (shouldn't happen but be safe)
+        if (this.segments.has(segmentKey)) {
+          console.log(`   - Segment ${segmentKey} unexpectedly exists, skipping`)
+          continue
         }
 
-        this.segments.set(segmentKey, segment)
+        console.log(`   - Creating new segment: ${segmentKey} (${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s, ${segmentDuration.toFixed(1)}s duration)`)
+        newSegmentsCreated++
+
+        // Calculate frequency data for this segment
+        const freqStartTime = performance.now()
+        const frequencies = await this.calculateFrequencies(segmentStart, segmentEnd)
+        const freqEndTime = performance.now()
+        console.log(`   - ⏱️ FFT calculation took: ${(freqEndTime - freqStartTime).toFixed(1)}ms`)
         
-        // Render this segment
-        await this.renderSegment(segment)
+        if (frequencies && frequencies.length > 0) {
+          const segment: FrequencySegment = {
+            startTime: segmentStart,
+            endTime: segmentEnd,
+            startPixel: shouldFillContainer ? 0 : segmentStart * pixelsPerSec, // Start at 0 for fill mode
+            endPixel: shouldFillContainer ? containerWidth : segmentEnd * pixelsPerSec, // End at container width for fill mode
+            frequencies: frequencies
+          }
+
+          this.segments.set(segmentKey, segment)
+          
+          // Render this segment
+          const renderStartTime = performance.now()
+          await this.renderSegment(segment)
+          const renderEndTime = performance.now()
+          console.log(`   - ⏱️ Canvas rendering took: ${(renderEndTime - renderStartTime).toFixed(1)}ms`)
+          console.log(`   - ✅ Segment ${segmentKey} rendered successfully (Total: ${(renderEndTime - freqStartTime).toFixed(1)}ms)`)
+          
+          // Emit progress update
+          this.emitProgress()
+        } else {
+          console.log(`   - ❌ Failed to generate frequencies for segment ${segmentKey}`)
+        }
       }
+    }
+
+    console.log(`🔧 Segment generation complete: ${newSegmentsCreated} new segments created, ${this.segments.size} total`)
+    
+    // Show final segments list
+    console.log(`   - Final segments:`)
+    for (const [key, segment] of this.segments) {
+      console.log(`     * ${key}: ${segment.startTime.toFixed(1)}s - ${segment.endTime.toFixed(1)}s`)
+    }
+
+    // Start progressive loading if not already running
+    if (!this.isProgressiveLoading) {
+      this.startProgressiveLoading()
     }
   }
 
+  private findUncoveredTimeRanges(startTime: number, endTime: number, segmentDuration: number): Array<{start: number, end: number}> {
+    // Get all existing segments sorted by start time
+    const existingSegments = Array.from(this.segments.values())
+      .sort((a, b) => a.startTime - b.startTime)
+    
+    const uncoveredRanges: Array<{start: number, end: number}> = []
+    let currentTime = startTime
+    
+    for (const segment of existingSegments) {
+      // If there's a gap before this segment
+      if (currentTime < segment.startTime && currentTime < endTime) {
+        const gapEnd = Math.min(segment.startTime, endTime)
+        uncoveredRanges.push({
+          start: currentTime,
+          end: gapEnd
+        })
+      }
+      
+      // Move past this segment
+      currentTime = Math.max(currentTime, segment.endTime)
+      
+      // If we've covered the requested range, stop
+      if (currentTime >= endTime) {
+        break
+      }
+    }
+    
+    // If there's still uncovered time at the end
+    if (currentTime < endTime) {
+      uncoveredRanges.push({
+        start: currentTime,
+        end: endTime
+      })
+    }
+    
+    return uncoveredRanges
+  }
+
+  private startProgressiveLoading() {
+    if (this.isProgressiveLoading || !this.buffer || !this.progressiveLoading) return
+    
+    this.isProgressiveLoading = true
+    console.log(`🔄 Starting progressive background loading...`)
+    
+    // Start loading after a short delay to not interfere with user interactions
+    this.progressiveLoadTimeout = window.setTimeout(() => {
+      this.progressiveLoadNextSegment()
+    }, 1000) // Wait 1 second between segments
+  }
+
+  private async progressiveLoadNextSegment() {
+    if (!this.buffer || !this.isProgressiveLoading) return
+
+    const pixelsPerSec = this.getPixelsPerSecond()
+    const segmentPixelWidth = 15000
+    const segmentDuration = segmentPixelWidth / pixelsPerSec
+    const totalDuration = this.buffer.duration
+
+    // Find the next unloaded segment
+    let nextStartTime = 0
+    const loadedRanges: Array<{start: number, end: number}> = []
+    
+    // Collect all loaded ranges
+    for (const segment of this.segments.values()) {
+      loadedRanges.push({start: segment.startTime, end: segment.endTime})
+    }
+    
+    // Sort by start time
+    loadedRanges.sort((a, b) => a.start - b.start)
+    
+    // Find first gap or unloaded area
+    for (let time = 0; time < totalDuration; time += segmentDuration) {
+      const segmentEnd = Math.min(time + segmentDuration, totalDuration)
+      
+      // Check if this segment is already loaded
+      const isLoaded = loadedRanges.some(range => 
+        time >= range.start && segmentEnd <= range.end
+      )
+      
+      if (!isLoaded) {
+        nextStartTime = time
+        break
+      }
+    }
+
+    // If we found an unloaded segment, load it
+    if (nextStartTime < totalDuration) {
+      const segmentEnd = Math.min(nextStartTime + segmentDuration, totalDuration)
+      
+      console.log(`🔄 Progressive loading: ${nextStartTime.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
+      
+      try {
+        await this.generateSegments(nextStartTime, segmentEnd)
+        
+        // Schedule next progressive load
+        this.progressiveLoadTimeout = window.setTimeout(() => {
+          this.progressiveLoadNextSegment()
+        }, 5000) // Wait 5 seconds between segments
+        
+      } catch (error) {
+        console.error('Progressive loading error:', error)
+        this._stopProgressiveLoading()
+      }
+    } else {
+      // All segments loaded
+      console.log(`✅ Progressive loading complete! All ${this.segments.size} segments loaded.`)
+      this._stopProgressiveLoading()
+    }
+  }
+
+  private _stopProgressiveLoading() {
+    this.isProgressiveLoading = false
+    if (this.progressiveLoadTimeout) {
+      clearTimeout(this.progressiveLoadTimeout)
+      this.progressiveLoadTimeout = null
+    }
+  }
+
+  /** Get the current loading progress as a percentage (0-100) */
+  public getLoadingProgress(): number {
+    if (!this.buffer) return 0
+    
+    const totalDuration = this.buffer.duration
+    const pixelsPerSec = this.getPixelsPerSecond()
+    const segmentPixelWidth = 15000
+    const segmentDuration = segmentPixelWidth / pixelsPerSec
+    const totalSegments = Math.ceil(totalDuration / segmentDuration)
+    
+    if (totalSegments === 0) return 100
+    
+    const loadedSegments = this.segments.size
+    return Math.min(100, (loadedSegments / totalSegments) * 100)
+  }
+
+  private emitProgress() {
+    const progress = this.getLoadingProgress() / 100 // Convert to 0-1 range
+    this.emit('progress', progress)
+  }
+
   private async calculateFrequencies(startTime: number, endTime: number): Promise<Uint8Array[][]> {
+    if (!this.buffer) return []
+
+    const calcStartTime = performance.now()
+    const sampleRate = this.buffer.sampleRate
+    const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1
+
+    // Try to use web worker first
+    if (this.worker) {
+      try {
+        console.log(`     - 🔧 Using web worker for FFT calculations`)
+        const result = await this.calculateFrequenciesWithWorker(startTime, endTime)
+        const totalTime = performance.now() - calcStartTime
+        console.log(`     - ⏱️ Worker calculation completed in: ${totalTime.toFixed(1)}ms`)
+        return result
+      } catch (error) {
+        console.warn('Worker calculation failed, falling back to main thread:', error)
+        // Fall through to main thread calculation
+      }
+    }
+
+    // Fallback to main thread calculation
+    console.log(`     - 🔧 Using main thread for FFT calculations`)
+    return this.calculateFrequenciesMainThread(startTime, endTime)
+  }
+
+  private async calculateFrequenciesWithWorker(startTime: number, endTime: number): Promise<Uint8Array[][]> {
+    if (!this.buffer || !this.worker) {
+      throw new Error('Worker not available')
+    }
+
+    const sampleRate = this.buffer.sampleRate
+    const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1
+
+    // Calculate noverlap
+    let noverlap = this.noverlap
+    if (!noverlap) {
+      const segmentDuration = endTime - startTime
+      const pixelsPerSec = this.getPixelsPerSecond()
+      const segmentWidth = segmentDuration * pixelsPerSec
+      const startSample = Math.floor(startTime * sampleRate)
+      const endSample = Math.floor(endTime * sampleRate)
+      const uniqueSamplesPerPx = (endSample - startSample) / segmentWidth
+      noverlap = Math.max(0, Math.round(this.fftSamples - uniqueSamplesPerPx))
+    }
+
+    // Prepare audio data for worker
+    const audioData: Float32Array[] = []
+    for (let c = 0; c < channels; c++) {
+      audioData.push(this.buffer.getChannelData(c))
+    }
+
+    // Generate unique ID for this request
+    const id = `${Date.now()}_${Math.random()}`
+
+    // Create promise for worker response
+    const promise = new Promise<Uint8Array[][]>((resolve, reject) => {
+      this.workerPromises.set(id, { resolve, reject })
+      
+      // Set timeout to avoid hanging
+      setTimeout(() => {
+        if (this.workerPromises.has(id)) {
+          this.workerPromises.delete(id)
+          reject(new Error('Worker timeout'))
+        }
+      }, 30000) // 30 second timeout
+    })
+
+    // Send message to worker
+    this.worker.postMessage({
+      type: 'calculateFrequencies',
+      id,
+      audioData,
+      options: {
+        startTime,
+        endTime,
+        sampleRate,
+        fftSamples: this.fftSamples,
+        windowFunc: this.windowFunc,
+        alpha: this.alpha,
+        noverlap,
+        scale: this.scale,
+        gainDB: this.gainDB,
+        rangeDB: this.rangeDB,
+        splitChannels: this.options.splitChannels || false
+      }
+    })
+
+    return promise
+  }
+
+  private async calculateFrequenciesMainThread(startTime: number, endTime: number): Promise<Uint8Array[][]> {
     if (!this.buffer) return []
 
     const sampleRate = this.buffer.sampleRate
@@ -653,8 +1139,19 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       noverlap = Math.max(0, Math.round(this.fftSamples - uniqueSamplesPerPx))
     }
 
+    // OPTIMIZATION: For windowed mode, reduce overlap to speed up processing
+    const maxOverlap = this.fftSamples * 0.5
+    noverlap = Math.min(noverlap, maxOverlap)
+    const minHopSize = Math.max(64, this.fftSamples * 0.25)
+    const hopSize = Math.max(minHopSize, this.fftSamples - noverlap)
+
     const frequencies: Uint8Array[][] = []
-    const hopSize = this.fftSamples - noverlap
+    
+    console.log(`     - Processing ${(endTime - startTime).toFixed(1)}s segment (${endSample - startSample} samples)`)
+    console.log(`     - FFT size: ${this.fftSamples}, hop size: ${hopSize}, channels: ${channels}`)
+
+    const fftStartTime = performance.now()
+    let totalFFTs = 0
 
     for (let c = 0; c < channels; c++) {
       const channelData = this.buffer.getChannelData(c)
@@ -663,6 +1160,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       for (let sample = startSample; sample + this.fftSamples < endSample; sample += hopSize) {
         const segment = channelData.slice(sample, sample + this.fftSamples)
         let spectrum = this.fft.calculateSpectrum(segment)
+        totalFFTs++
 
         // Apply filter bank if needed
         const filterBank = this.getFilterBank(sampleRate)
@@ -672,22 +1170,27 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
         // Convert to uint8 color indices
         const freqBins = new Uint8Array(spectrum.length)
+        const gainPlusRange = this.gainDB + this.rangeDB
+        
         for (let j = 0; j < spectrum.length; j++) {
           const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
           const valueDB = 20 * Math.log10(magnitude)
           
-          if (valueDB < -this.gainDB - this.rangeDB) {
+          if (valueDB < -gainPlusRange) {
             freqBins[j] = 0
           } else if (valueDB > -this.gainDB) {
             freqBins[j] = 255
           } else {
-            freqBins[j] = ((valueDB + this.gainDB) / this.rangeDB) * 255 + 256
+            freqBins[j] = Math.round(((valueDB + this.gainDB) / this.rangeDB) * 255)
           }
         }
         channelFreq.push(freqBins)
       }
       frequencies.push(channelFreq)
     }
+
+    const fftEndTime = performance.now()
+    console.log(`     - ⏱️ Main thread processed ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`)
 
     return frequencies
   }
@@ -769,36 +1272,26 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const rMax = this.hzToScale(freqMax) / this.hzToScale(freqFrom)
     const rMax1 = Math.min(1, rMax)
 
+    // Use the same frequency scaling approach as the regular spectrogram plugin
+    const drawHeight = (height * rMax1) / rMax
+    const drawY = yOffset + height * (1 - rMax1 / rMax)
+    const bitmapSourceY = Math.round(freqBins * (1 - rMax1))
+    const bitmapSourceHeight = Math.round(freqBins * (rMax1 - rMin))
+
     // Create and draw bitmap with proper frequency scaling
     const bitmap = await createImageBitmap(
       imageData,
       0,
-      Math.round(freqBins * (1 - rMax1)),
+      bitmapSourceY,
       channelFreq.length,
-      Math.round(freqBins * (rMax1 - rMin))
+      bitmapSourceHeight
     )
-    
-    // Draw with proper height scaling
-    const drawHeight = (height * rMax1) / rMax
-    const drawY = yOffset + height * (1 - rMax1 / rMax)
     
     ctx.drawImage(bitmap, 0, drawY, width, drawHeight)
     
     // Clean up
     if ('close' in bitmap) {
       bitmap.close()
-    }
-  }
-
-  private cleanupOldSegments(windowStartTime: number, windowEndTime: number) {
-    for (const [key, segment] of this.segments) {
-      // Remove segments outside the window
-      if (segment.endTime < windowStartTime || segment.startTime > windowEndTime) {
-        if (segment.canvas) {
-          segment.canvas.remove()
-        }
-        this.segments.delete(key)
-      }
     }
   }
 
@@ -1040,6 +1533,26 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       this.renderTimeout = null
     }
     
+    if (this.qualityUpdateTimeout) {
+      clearTimeout(this.qualityUpdateTimeout)
+      this.qualityUpdateTimeout = null
+    }
+    
+    // Stop progressive loading
+    this.stopProgressiveLoading()
+    
+    // Clean up worker
+    if (this.worker) {
+      this.worker.terminate()
+      this.worker = null
+    }
+    
+    // Clear any pending worker promises
+    for (const [id, promise] of this.workerPromises) {
+      promise.reject(new Error('Plugin destroyed'))
+    }
+    this.workerPromises.clear()
+    
     this.clearAllSegments()
     
     // Clean up DOM elements properly
@@ -1080,16 +1593,55 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Handle default case when no zoom is specified
     const minPxPerSec = this.wavesurfer?.options.minPxPerSec
     if (minPxPerSec && minPxPerSec > 0) {
+      console.log(`  📏 Using minPxPerSec: ${minPxPerSec}`)
       return minPxPerSec
     }
+    
+    // For windowed mode, enforce a minimum zoom level so we never try to fit entire audio on screen
+    const WINDOWED_MIN_PX_PER_SEC = 50 // At least 50 pixels per second for windowed mode
     
     // Fallback: calculate based on wrapper width and audio duration
     if (this.buffer) {
       const wrapperWidth = this.getWidth()
-      return wrapperWidth > 0 ? wrapperWidth / this.buffer.duration : 100 // Default fallback
+      const calculatedPxPerSec = wrapperWidth > 0 ? wrapperWidth / this.buffer.duration : 100
+      
+      // For windowed mode, we want to show only a small portion of audio at a time
+      // Use the maximum of calculated value and our minimum to ensure reasonable zoom
+      const finalPxPerSec = Math.max(calculatedPxPerSec, WINDOWED_MIN_PX_PER_SEC)
+      
+      console.log(`  📏 Calculated pxPerSec: ${calculatedPxPerSec.toFixed(2)} (width: ${wrapperWidth}px, duration: ${this.buffer.duration.toFixed(1)}s)`)
+      console.log(`  📏 Enforced minimum: ${WINDOWED_MIN_PX_PER_SEC}, final: ${finalPxPerSec.toFixed(2)}`)
+      console.log(`  📏 This means ${(wrapperWidth / finalPxPerSec).toFixed(1)}s of audio will be visible on screen`)
+      
+      return finalPxPerSec
     }
     
-    return 100 // Default fallback
+    console.log(`  📏 Using default fallback: ${WINDOWED_MIN_PX_PER_SEC}`)
+    return WINDOWED_MIN_PX_PER_SEC
+  }
+
+  /** Stop progressive loading if it's currently running */
+  public stopProgressiveLoading() {
+    console.log('🛑 Progressive loading stopped by user')
+    this.isProgressiveLoading = false
+    if (this.progressiveLoadTimeout) {
+      clearTimeout(this.progressiveLoadTimeout)
+      this.progressiveLoadTimeout = null
+    }
+  }
+
+  /** Start progressive loading manually */
+  public enableProgressiveLoading() {
+    if (!this.progressiveLoading) {
+      console.log('⚠️ Progressive loading is disabled in options')
+      return
+    }
+    if (this.isProgressiveLoading) {
+      console.log('⚠️ Progressive loading is already running')
+      return
+    }
+    console.log('▶️ Progressive loading started manually')
+    this.startProgressiveLoading()
   }
 }
 
