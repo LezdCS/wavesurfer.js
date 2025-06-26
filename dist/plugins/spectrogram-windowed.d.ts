@@ -86,6 +86,7 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private numErbFilters;
     private progressiveLoadTimeout;
     private isProgressiveLoading;
+    private nextProgressiveSegmentTime;
     private worker;
     private workerPromises;
     private workerBlobUrl;
@@ -147,5 +148,7 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private getPixelsPerSecond;
     /** Stop progressive loading if it's currently running */
     stopProgressiveLoading(): void;
+    /** Restart progressive loading from the beginning */
+    restartProgressiveLoading(): void;
 }
 export default WindowedSpectrogramPlugin;

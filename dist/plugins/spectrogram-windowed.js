@@ -1,1 +1,1461 @@
-function e(e,t,i,n){return new(i||(i=Promise))((function(r,s){function a(e){try{l(n.next(e))}catch(e){s(e)}}function o(e){try{l(n.throw(e))}catch(e){s(e)}}function l(e){var t;e.done?r(e.value):(t=e.value,t instanceof i?t:new i((function(e){e(t)}))).then(a,o)}l((n=n.apply(e,t||[])).next())}))}"function"==typeof SuppressedError&&SuppressedError;class t{constructor(){this.listeners={}}on(e,t,i){if(this.listeners[e]||(this.listeners[e]=new Set),this.listeners[e].add(t),null==i?void 0:i.once){const i=()=>{this.un(e,i),this.un(e,t)};return this.on(e,i),i}return()=>this.un(e,t)}un(e,t){var i;null===(i=this.listeners[e])||void 0===i||i.delete(t)}once(e,t){return this.on(e,t,{once:!0})}unAll(){this.listeners={}}emit(e,...t){this.listeners[e]&&this.listeners[e].forEach((e=>e(...t)))}}class i extends t{constructor(e){super(),this.subscriptions=[],this.isDestroyed=!1,this.options=e}onInit(){}_init(e){this.isDestroyed&&(this.subscriptions=[],this.isDestroyed=!1),this.wavesurfer=e,this.onInit()}destroy(){this.emit("destroy"),this.subscriptions.forEach((e=>e())),this.subscriptions=[],this.isDestroyed=!0,this.wavesurfer=void 0}}function n(e,t){const i=t.xmlns?document.createElementNS(t.xmlns,e):document.createElement(e);for(const[e,r]of Object.entries(t))if("children"===e&&r)for(const[e,t]of Object.entries(r))t instanceof Node?i.appendChild(t):"string"==typeof t?i.appendChild(document.createTextNode(t)):i.appendChild(n(e,t));else"style"===e?Object.assign(i.style,r):"textContent"===e?i.textContent=r:i.setAttribute(e,r.toString());return i}function r(e,t,i){const r=n(e,t||{});return null==i||i.appendChild(r),r}const s=1e3*Math.log(10)/107.939;function a(e,t,i,n){switch(this.bufferSize=e,this.sampleRate=t,this.bandwidth=2/e*(t/2),this.sinTable=new Float32Array(e),this.cosTable=new Float32Array(e),this.windowValues=new Float32Array(e),this.reverseTable=new Uint32Array(e),this.peakBand=0,this.peak=0,i){case"bartlett":for(r=0;r<e;r++)this.windowValues[r]=2/(e-1)*((e-1)/2-Math.abs(r-(e-1)/2));break;case"bartlettHann":for(r=0;r<e;r++)this.windowValues[r]=.62-.48*Math.abs(r/(e-1)-.5)-.38*Math.cos(2*Math.PI*r/(e-1));break;case"blackman":for(n=n||.16,r=0;r<e;r++)this.windowValues[r]=(1-n)/2-.5*Math.cos(2*Math.PI*r/(e-1))+n/2*Math.cos(4*Math.PI*r/(e-1));break;case"cosine":for(r=0;r<e;r++)this.windowValues[r]=Math.cos(Math.PI*r/(e-1)-Math.PI/2);break;case"gauss":for(n=n||.25,r=0;r<e;r++)this.windowValues[r]=Math.pow(Math.E,-.5*Math.pow((r-(e-1)/2)/(n*(e-1)/2),2));break;case"hamming":for(r=0;r<e;r++)this.windowValues[r]=.54-.46*Math.cos(2*Math.PI*r/(e-1));break;case"hann":case void 0:for(r=0;r<e;r++)this.windowValues[r]=.5*(1-Math.cos(2*Math.PI*r/(e-1)));break;case"lanczoz":for(r=0;r<e;r++)this.windowValues[r]=Math.sin(Math.PI*(2*r/(e-1)-1))/(Math.PI*(2*r/(e-1)-1));break;case"rectangular":for(r=0;r<e;r++)this.windowValues[r]=1;break;case"triangular":for(r=0;r<e;r++)this.windowValues[r]=2/e*(e/2-Math.abs(r-(e-1)/2));break;default:throw Error("No such window function '"+i+"'")}for(var r,s=1,a=e>>1;s<e;){for(r=0;r<s;r++)this.reverseTable[r+s]=this.reverseTable[r]+a;s<<=1,a>>=1}for(r=0;r<e;r++)this.sinTable[r]=Math.sin(-Math.PI/r),this.cosTable[r]=Math.cos(-Math.PI/r);this.calculateSpectrum=function(e){var t,i,n,r=this.bufferSize,s=this.cosTable,a=this.sinTable,o=this.reverseTable,l=new Float32Array(r),h=new Float32Array(r),f=2/this.bufferSize,u=Math.sqrt,c=new Float32Array(r/2),d=Math.floor(Math.log(r)/Math.LN2);if(Math.pow(2,d)!==r)throw"Invalid buffer size, must be a power of 2.";if(r!==e.length)throw"Supplied buffer is not the same size as defined FFT. FFT Size: "+r+" Buffer Size: "+e.length;for(var p,m,g,b,w,S,v,k,z=1,M=0;M<r;M++)l[M]=e[o[M]]*this.windowValues[o[M]],h[M]=0;for(;z<r;){p=s[z],m=a[z],g=1,b=0;for(var T=0;T<z;T++){for(M=T;M<r;)S=g*l[w=M+z]-b*h[w],v=g*h[w]+b*l[w],l[w]=l[M]-S,h[w]=h[M]-v,l[M]+=S,h[M]+=v,M+=z<<1;g=(k=g)*p-b*m,b=k*m+b*p}z<<=1}M=0;for(var y=r/2;M<y;M++)(n=f*u((t=l[M])*t+(i=h[M])*i))>this.peak&&(this.peakBand=M,this.peak=n),c[M]=n;return c}}class o extends i{static create(e){return new o(e||{})}constructor(e){var t,i;super(e),this.segments=new Map,this.buffer=null,this.currentPosition=0,this.pixelsPerSecond=0,this.isRendering=!1,this.renderTimeout=null,this.fft=null,this.progressiveLoadTimeout=null,this.isProgressiveLoading=!1,this.worker=null,this.workerPromises=new Map,this.workerBlobUrl=null,this.qualityUpdateTimeout=null,this._onWrapperClick=e=>{const t=this.wrapper.getBoundingClientRect(),i=(e.clientX-t.left)/t.width;this.emit("click",i)},this.container="string"==typeof e.container?document.querySelector(e.container):e.container,this.setupColorMap(e.colorMap),this.fftSamples=e.fftSamples||512,this.height=e.height||200,this.noverlap=e.noverlap||null,this.windowFunc=e.windowFunc||"hann",this.alpha=e.alpha,this.frequencyMin=e.frequencyMin||0,this.frequencyMax=e.frequencyMax||0,this.gainDB=null!==(t=e.gainDB)&&void 0!==t?t:20,this.rangeDB=null!==(i=e.rangeDB)&&void 0!==i?i:80,this.scale=e.scale||"mel",this.windowSize=e.windowSize||30,this.bufferSize=e.bufferSize||5e3,this.progressiveLoading=!0===e.progressiveLoading,this.useWebWorker=!0===e.useWebWorker&&"undefined"!=typeof window,this.numMelFilters=this.fftSamples/2,this.numLogFilters=this.fftSamples/2,this.numBarkFilters=this.fftSamples/2,this.numErbFilters=this.fftSamples/2,this.createWrapper(),this.createCanvas(),this.useWebWorker&&this.initializeWorker()}initializeWorker(){if("undefined"!=typeof window&&"undefined"!=typeof Worker)try{const e=this.createWorkerBlob(),t=URL.createObjectURL(e);this.worker=new Worker(t),this.worker.onmessage=e=>{const{type:t,id:i,result:n,error:r}=e.data;if("frequenciesResult"===t){const e=this.workerPromises.get(i);e&&(this.workerPromises.delete(i),r?e.reject(new Error(r)):e.resolve(n))}},this.worker.onerror=e=>{console.warn("Spectrogram worker error, falling back to main thread:",e),URL.revokeObjectURL(t),this.worker=null},this.workerBlobUrl=t}catch(e){console.warn("Failed to initialize worker, falling back to main thread:",e),this.worker=null}else console.warn("Worker not available in this environment, using main thread calculation")}createWorkerBlob(){return new Blob(["\n/**\n * Web Worker for Windowed Spectrogram Plugin\n * Handles FFT calculations for frequency analysis\n */\n\n// FFT Implementation - Based on https://github.com/corbanbrook/dsp.js\nfunction FFT(bufferSize, sampleRate, windowFunc, alpha) {\n  this.bufferSize = bufferSize\n  this.sampleRate = sampleRate\n  this.bandwidth = (2 / bufferSize) * (sampleRate / 2)\n\n  this.sinTable = new Float32Array(bufferSize)\n  this.cosTable = new Float32Array(bufferSize)\n  this.windowValues = new Float32Array(bufferSize)\n  this.reverseTable = new Uint32Array(bufferSize)\n\n  this.peakBand = 0\n  this.peak = 0\n\n  var i\n  switch (windowFunc) {\n    case 'bartlett':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = (2 / (bufferSize - 1)) * ((bufferSize - 1) / 2 - Math.abs(i - (bufferSize - 1) / 2))\n      }\n      break\n    case 'bartlettHann':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] =\n          0.62 - 0.48 * Math.abs(i / (bufferSize - 1) - 0.5) - 0.38 * Math.cos((Math.PI * 2 * i) / (bufferSize - 1))\n      }\n      break\n    case 'blackman':\n      alpha = alpha || 0.16\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] =\n          (1 - alpha) / 2 -\n          0.5 * Math.cos((Math.PI * 2 * i) / (bufferSize - 1)) +\n          (alpha / 2) * Math.cos((4 * Math.PI * i) / (bufferSize - 1))\n      }\n      break\n    case 'cosine':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = Math.cos((Math.PI * i) / (bufferSize - 1) - Math.PI / 2)\n      }\n      break\n    case 'gauss':\n      alpha = alpha || 0.25\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = Math.pow(\n          Math.E,\n          -0.5 * Math.pow((i - (bufferSize - 1) / 2) / ((alpha * (bufferSize - 1)) / 2), 2),\n        )\n      }\n      break\n    case 'hamming':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = 0.54 - 0.46 * Math.cos((Math.PI * 2 * i) / (bufferSize - 1))\n      }\n      break\n    case 'hann':\n    case undefined:\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = 0.5 * (1 - Math.cos((Math.PI * 2 * i) / (bufferSize - 1)))\n      }\n      break\n    case 'lanczoz':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] =\n          Math.sin(Math.PI * ((2 * i) / (bufferSize - 1) - 1)) / (Math.PI * ((2 * i) / (bufferSize - 1) - 1))\n      }\n      break\n    case 'rectangular':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = 1\n      }\n      break\n    case 'triangular':\n      for (i = 0; i < bufferSize; i++) {\n        this.windowValues[i] = (2 / bufferSize) * (bufferSize / 2 - Math.abs(i - (bufferSize - 1) / 2))\n      }\n      break\n    default:\n      throw Error(\"No such window function '\" + windowFunc + \"'\")\n  }\n\n  var limit = 1\n  var bit = bufferSize >> 1\n  var i\n\n  while (limit < bufferSize) {\n    for (i = 0; i < limit; i++) {\n      this.reverseTable[i + limit] = this.reverseTable[i] + bit\n    }\n\n    limit = limit << 1\n    bit = bit >> 1\n  }\n\n  for (i = 0; i < bufferSize; i++) {\n    this.sinTable[i] = Math.sin(-Math.PI / i)\n    this.cosTable[i] = Math.cos(-Math.PI / i)\n  }\n\n  this.calculateSpectrum = function (buffer) {\n    var bufferSize = this.bufferSize,\n      cosTable = this.cosTable,\n      sinTable = this.sinTable,\n      reverseTable = this.reverseTable,\n      real = new Float32Array(bufferSize),\n      imag = new Float32Array(bufferSize),\n      bSi = 2 / this.bufferSize,\n      sqrt = Math.sqrt,\n      rval,\n      ival,\n      mag,\n      spectrum = new Float32Array(bufferSize / 2)\n\n    var k = Math.floor(Math.log(bufferSize) / Math.LN2)\n\n    if (Math.pow(2, k) !== bufferSize) {\n      throw 'Invalid buffer size, must be a power of 2.'\n    }\n    if (bufferSize !== buffer.length) {\n      throw (\n        'Supplied buffer is not the same size as defined FFT. FFT Size: ' +\n        bufferSize +\n        ' Buffer Size: ' +\n        buffer.length\n      )\n    }\n\n    var halfSize = 1,\n      phaseShiftStepReal,\n      phaseShiftStepImag,\n      currentPhaseShiftReal,\n      currentPhaseShiftImag,\n      off,\n      tr,\n      ti,\n      tmpReal\n\n    for (var i = 0; i < bufferSize; i++) {\n      real[i] = buffer[reverseTable[i]] * this.windowValues[reverseTable[i]]\n      imag[i] = 0\n    }\n\n    while (halfSize < bufferSize) {\n      phaseShiftStepReal = cosTable[halfSize]\n      phaseShiftStepImag = sinTable[halfSize]\n\n      currentPhaseShiftReal = 1\n      currentPhaseShiftImag = 0\n\n      for (var fftStep = 0; fftStep < halfSize; fftStep++) {\n        var i = fftStep\n\n        while (i < bufferSize) {\n          off = i + halfSize\n          tr = currentPhaseShiftReal * real[off] - currentPhaseShiftImag * imag[off]\n          ti = currentPhaseShiftReal * imag[off] + currentPhaseShiftImag * real[off]\n\n          real[off] = real[i] - tr\n          imag[off] = imag[i] - ti\n          real[i] += tr\n          imag[i] += ti\n\n          i += halfSize << 1\n        }\n\n        tmpReal = currentPhaseShiftReal\n        currentPhaseShiftReal = tmpReal * phaseShiftStepReal - currentPhaseShiftImag * phaseShiftStepImag\n        currentPhaseShiftImag = tmpReal * phaseShiftStepImag + currentPhaseShiftImag * phaseShiftStepReal\n      }\n\n      halfSize = halfSize << 1\n    }\n\n    for (var i = 0, N = bufferSize / 2; i < N; i++) {\n      rval = real[i]\n      ival = imag[i]\n      mag = bSi * sqrt(rval * rval + ival * ival)\n\n      if (mag > this.peak) {\n        this.peakBand = i\n        this.peak = mag\n      }\n      spectrum[i] = mag\n    }\n    return spectrum\n  }\n}\n\n// Global FFT instance (reused for performance)\nlet fft = null\n\nconst ERB_A = (1000 * Math.log(10)) / (24.7 * 4.37)\n// Frequency scaling functions\nfunction hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700) }\nfunction melToHz(mel) { return 700 * (Math.pow(10, mel / 2595) - 1) }\nfunction hzToLog(hz) { return Math.log10(Math.max(1, hz)) }\nfunction logToHz(log) { return Math.pow(10, log) }\nfunction hzToBark(hz) {\n  let bark = (26.81 * hz) / (1960 + hz) - 0.53\n  if (bark < 2) bark += 0.15 * (2 - bark)\n  if (bark > 20.1) bark += 0.22 * (bark - 20.1)\n  return bark\n}\nfunction barkToHz(bark) {\n  if (bark < 2) bark = (bark - 0.3) / 0.85\n  if (bark > 20.1) bark = (bark + 4.422) / 1.22\n  return 1960 * ((bark + 0.53) / (26.28 - bark))\n}\nfunction hzToErb(hz) { return ERB_A * Math.log10(1 + hz * 0.00437) }\nfunction erbToHz(erb) { return (Math.pow(10, erb / ERB_A) - 1) / 0.00437 }\n\nfunction createFilterBank(\n  numFilters,\n  fftSamples,\n  sampleRate,\n  hzToScale,\n  scaleToHz,\n) {\n  const filterMin = hzToScale(0)\n  const filterMax = hzToScale(sampleRate / 2)\n  const filterBank = Array.from({ length: numFilters }, () => Array(fftSamples / 2 + 1).fill(0))\n  const scale = sampleRate / fftSamples\n  \n  for (let i = 0; i < numFilters; i++) {\n    let hz = scaleToHz(filterMin + (i / numFilters) * (filterMax - filterMin))\n    let j = Math.floor(hz / scale)\n    let hzLow = j * scale\n    let hzHigh = (j + 1) * scale\n    let r = (hz - hzLow) / (hzHigh - hzLow)\n    filterBank[i][j] = 1 - r\n    filterBank[i][j + 1] = r\n  }\n  return filterBank\n}\n\nfunction applyFilterBank(fftPoints, filterBank) {\n  const numFilters = filterBank.length\n  const logSpectrum = Float32Array.from({ length: numFilters }, () => 0)\n  for (let i = 0; i < numFilters; i++) {\n    for (let j = 0; j < fftPoints.length; j++) {\n      logSpectrum[i] += fftPoints[j] * filterBank[i][j]\n    }\n  }\n  return logSpectrum\n}\n\n// Worker message handler\nself.onmessage = function(e) {\n  const { type, id, audioData, options } = e.data\n  \n  if (type === 'calculateFrequencies') {\n    try {\n      const result = calculateFrequencies(audioData, options)\n      self.postMessage({\n        type: 'frequenciesResult',\n        id: id,\n        result: result\n      })\n    } catch (error) {\n      self.postMessage({\n        type: 'frequenciesResult',\n        id: id,\n        error: error instanceof Error ? error.message : String(error)\n      })\n    }\n  }\n}\n\n/**\n * Calculate frequency data for audio channels\n */\nfunction calculateFrequencies(audioChannels, options) {\n  const {\n    startTime, endTime, sampleRate, fftSamples, windowFunc, alpha,\n    noverlap, scale, gainDB, rangeDB, splitChannels\n  } = options\n\n  const startSample = Math.floor(startTime * sampleRate)\n  const endSample = Math.floor(endTime * sampleRate)\n  const channels = splitChannels ? audioChannels.length : 1\n\n  // Initialize FFT (reuse if possible for performance)\n  if (!fft || fft.bufferSize !== fftSamples) {\n    fft = new FFT(fftSamples, sampleRate, windowFunc, alpha)\n  }\n\n  // Create filter bank based on scale (same logic as main thread)\n  let filterBank = null\n  const numFilters = fftSamples / 2 // Same as main thread\n  \n  switch (scale) {\n    case 'mel':\n      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToMel, melToHz)\n      break\n    case 'logarithmic':\n      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToLog, logToHz)\n      break\n    case 'bark':\n      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToBark, barkToHz)\n      break\n    case 'erb':\n      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToErb, erbToHz)\n      break\n    case 'linear':\n    default:\n      // No filter bank for linear scale\n      filterBank = null\n      break\n  }\n\n  // Calculate hop size\n  let actualNoverlap = noverlap || Math.max(0, Math.round(fftSamples * 0.5))\n  const maxOverlap = fftSamples * 0.5\n  actualNoverlap = Math.min(actualNoverlap, maxOverlap)\n  const minHopSize = Math.max(64, fftSamples * 0.25)\n  const hopSize = Math.max(minHopSize, fftSamples - actualNoverlap)\n\n  const frequencies = []\n\n  for (let c = 0; c < channels; c++) {\n    const channelData = audioChannels[c]\n    const channelFreq = []\n\n    for (let sample = startSample; sample + fftSamples < endSample; sample += hopSize) {\n      const segment = channelData.slice(sample, sample + fftSamples)\n      let spectrum = fft.calculateSpectrum(segment)\n      \n      // Apply filter bank if specified (same as main thread)\n      if (filterBank) {\n        spectrum = applyFilterBank(spectrum, filterBank)\n      }\n\n      // Convert to uint8 color indices\n      const freqBins = new Uint8Array(spectrum.length)\n      const gainPlusRange = gainDB + rangeDB\n      \n      for (let j = 0; j < spectrum.length; j++) {\n        const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12\n        const valueDB = 20 * Math.log10(magnitude)\n        \n        if (valueDB < -gainPlusRange) {\n          freqBins[j] = 0\n        } else if (valueDB > -gainDB) {\n          freqBins[j] = 255\n        } else {\n          freqBins[j] = Math.round(((valueDB + gainDB) / rangeDB) * 255)\n        }\n      }\n      channelFreq.push(freqBins)\n    }\n    frequencies.push(channelFreq)\n  }\n\n  return frequencies\n}\n"],{type:"application/javascript"})}setupColorMap(e){if(e&&"string"!=typeof e){if(e.length<256)throw new Error("Colormap must contain 256 elements");this.colorMap=e}else{const t=e||"roseus";switch(t){case"gray":this.colorMap=[];for(let e=0;e<256;e++){const t=(255-e)/256;this.colorMap.push([t,t,t,1])}break;case"igray":this.colorMap=[];for(let e=0;e<256;e++){const t=e/256;this.colorMap.push([t,t,t,1])}break;case"roseus":this.colorMap=[[.004528,.004341,.004307,1],[.005625,.006156,.00601,1],[.006628,.008293,.008161,1],[.007551,.010738,.01079,1],[.008382,.013482,.013941,1],[.009111,.01652,.017662,1],[.009727,.019846,.022009,1],[.010223,.023452,.027035,1],[.010593,.027331,.032799,1],[.010833,.031475,.039361,1],[.010941,.035875,.046415,1],[.010918,.04052,.053597,1],[.010768,.045158,.060914,1],[.010492,.049708,.068367,1],[.010098,.054171,.075954,1],[.009594,.058549,.083672,1],[.008989,.06284,.091521,1],[.008297,.067046,.099499,1],[.00753,.071165,.107603,1],[.006704,.075196,.11583,1],[.005838,.07914,.124178,1],[.004949,.082994,.132643,1],[.004062,.086758,.141223,1],[.003198,.09043,.149913,1],[.002382,.09401,.158711,1],[.001643,.097494,.167612,1],[.001009,.100883,.176612,1],[514e-6,.104174,.185704,1],[187e-6,.107366,.194886,1],[66e-6,.110457,.204151,1],[186e-6,.113445,.213496,1],[587e-6,.116329,.222914,1],[.001309,.119106,.232397,1],[.002394,.121776,.241942,1],[.003886,.124336,.251542,1],[.005831,.126784,.261189,1],[.008276,.12912,.270876,1],[.011268,.131342,.280598,1],[.014859,.133447,.290345,1],[.0191,.135435,.300111,1],[.024043,.137305,.309888,1],[.029742,.139054,.319669,1],[.036252,.140683,.329441,1],[.043507,.142189,.339203,1],[.050922,.143571,.348942,1],[.058432,.144831,.358649,1],[.066041,.145965,.368319,1],[.073744,.146974,.377938,1],[.081541,.147858,.387501,1],[.089431,.148616,.396998,1],[.097411,.149248,.406419,1],[.105479,.149754,.415755,1],[.113634,.150134,.424998,1],[.121873,.150389,.434139,1],[.130192,.150521,.443167,1],[.138591,.150528,.452075,1],[.147065,.150413,.460852,1],[.155614,.150175,.469493,1],[.164232,.149818,.477985,1],[.172917,.149343,.486322,1],[.181666,.148751,.494494,1],[.190476,.148046,.502493,1],[.199344,.147229,.510313,1],[.208267,.146302,.517944,1],[.217242,.145267,.52538,1],[.226264,.144131,.532613,1],[.235331,.142894,.539635,1],[.24444,.141559,.546442,1],[.253587,.140131,.553026,1],[.262769,.138615,.559381,1],[.271981,.137016,.5655,1],[.281222,.135335,.571381,1],[.290487,.133581,.577017,1],[.299774,.131757,.582404,1],[.30908,.129867,.587538,1],[.318399,.12792,.592415,1],[.32773,.125921,.597032,1],[.337069,.123877,.601385,1],[.346413,.121793,.605474,1],[.355758,.119678,.609295,1],[.365102,.11754,.612846,1],[.374443,.115386,.616127,1],[.383774,.113226,.619138,1],[.393096,.111066,.621876,1],[.402404,.108918,.624343,1],[.411694,.106794,.62654,1],[.420967,.104698,.628466,1],[.430217,.102645,.630123,1],[.439442,.100647,.631513,1],[.448637,.098717,.632638,1],[.457805,.096861,.633499,1],[.46694,.095095,.6341,1],[.47604,.093433,.634443,1],[.485102,.091885,.634532,1],[.494125,.090466,.63437,1],[.503104,.08919,.633962,1],[.512041,.088067,.633311,1],[.520931,.087108,.63242,1],[.529773,.086329,.631297,1],[.538564,.085738,.629944,1],[.547302,.085346,.628367,1],[.555986,.085162,.626572,1],[.564615,.08519,.624563,1],[.573187,.085439,.622345,1],[.581698,.085913,.619926,1],[.590149,.086615,.617311,1],[.598538,.087543,.614503,1],[.606862,.0887,.611511,1],[.61512,.090084,.608343,1],[.623312,.09169,.605001,1],[.631438,.093511,.601489,1],[.639492,.095546,.597821,1],[.647476,.097787,.593999,1],[.655389,.100226,.590028,1],[.66323,.102856,.585914,1],[.670995,.105669,.581667,1],[.678686,.108658,.577291,1],[.686302,.111813,.57279,1],[.69384,.115129,.568175,1],[.7013,.118597,.563449,1],[.708682,.122209,.558616,1],[.715984,.125959,.553687,1],[.723206,.12984,.548666,1],[.730346,.133846,.543558,1],[.737406,.13797,.538366,1],[.744382,.142209,.533101,1],[.751274,.146556,.527767,1],[.758082,.151008,.522369,1],[.764805,.155559,.516912,1],[.771443,.160206,.511402,1],[.777995,.164946,.505845,1],[.784459,.169774,.500246,1],[.790836,.174689,.494607,1],[.797125,.179688,.488935,1],[.803325,.184767,.483238,1],[.809435,.189925,.477518,1],[.815455,.19516,.471781,1],[.821384,.200471,.466028,1],[.827222,.205854,.460267,1],[.832968,.211308,.454505,1],[.838621,.216834,.448738,1],[.844181,.222428,.442979,1],[.849647,.22809,.43723,1],[.855019,.233819,.431491,1],[.860295,.239613,.425771,1],[.865475,.245471,.420074,1],[.870558,.251393,.414403,1],[.875545,.25738,.408759,1],[.880433,.263427,.403152,1],[.885223,.269535,.397585,1],[.889913,.275705,.392058,1],[.894503,.281934,.386578,1],[.898993,.288222,.381152,1],[.903381,.294569,.375781,1],[.907667,.300974,.370469,1],[.911849,.307435,.365223,1],[.915928,.313953,.360048,1],[.919902,.320527,.354948,1],[.923771,.327155,.349928,1],[.927533,.333838,.344994,1],[.931188,.340576,.340149,1],[.934736,.347366,.335403,1],[.938175,.354207,.330762,1],[.941504,.361101,.326229,1],[.944723,.368045,.321814,1],[.947831,.375039,.317523,1],[.950826,.382083,.313364,1],[.953709,.389175,.309345,1],[.956478,.396314,.305477,1],[.959133,.403499,.301766,1],[.961671,.410731,.298221,1],[.964093,.418008,.294853,1],[.966399,.425327,.291676,1],[.968586,.43269,.288696,1],[.970654,.440095,.285926,1],[.972603,.44754,.28338,1],[.974431,.455025,.281067,1],[.976139,.462547,.279003,1],[.977725,.470107,.277198,1],[.979188,.477703,.275666,1],[.980529,.485332,.274422,1],[.981747,.492995,.273476,1],[.98284,.50069,.272842,1],[.983808,.508415,.272532,1],[.984653,.516168,.27256,1],[.985373,.523948,.272937,1],[.985966,.531754,.273673,1],[.986436,.539582,.274779,1],[.98678,.547434,.276264,1],[.986998,.555305,.278135,1],[.987091,.563195,.280401,1],[.987061,.5711,.283066,1],[.986907,.579019,.286137,1],[.986629,.58695,.289615,1],[.986229,.594891,.293503,1],[.985709,.602839,.297802,1],[.985069,.610792,.302512,1],[.98431,.618748,.307632,1],[.983435,.626704,.313159,1],[.982445,.634657,.319089,1],[.981341,.642606,.32542,1],[.98013,.650546,.332144,1],[.978812,.658475,.339257,1],[.977392,.666391,.346753,1],[.97587,.67429,.354625,1],[.974252,.68217,.362865,1],[.972545,.690026,.371466,1],[.97075,.697856,.380419,1],[.968873,.705658,.389718,1],[.966921,.713426,.399353,1],[.964901,.721157,.409313,1],[.962815,.728851,.419594,1],[.960677,.7365,.430181,1],[.95849,.744103,.44107,1],[.956263,.751656,.452248,1],[.954009,.759153,.463702,1],[.951732,.766595,.475429,1],[.949445,.773974,.487414,1],[.947158,.781289,.499647,1],[.944885,.788535,.512116,1],[.942634,.795709,.524811,1],[.940423,.802807,.537717,1],[.938261,.809825,.550825,1],[.936163,.81676,.564121,1],[.934146,.823608,.577591,1],[.932224,.830366,.59122,1],[.930412,.837031,.604997,1],[.928727,.843599,.618904,1],[.927187,.850066,.632926,1],[.925809,.856432,.647047,1],[.92461,.862691,.661249,1],[.923607,.868843,.675517,1],[.92282,.874884,.689832,1],[.922265,.880812,.704174,1],[.921962,.886626,.718523,1],[.92193,.892323,.732859,1],[.922183,.897903,.747163,1],[.922741,.903364,.76141,1],[.92362,.908706,.77558,1],[.924837,.913928,.789648,1],[.926405,.919031,.80359,1],[.92834,.924015,.817381,1],[.930655,.928881,.830995,1],[.93336,.933631,.844405,1],[.936466,.938267,.857583,1],[.939982,.942791,.870499,1],[.943914,.947207,.883122,1],[.948267,.951519,.895421,1],[.953044,.955732,.907359,1],[.958246,.959852,.918901,1],[.963869,.963887,.930004,1],[.969909,.967845,.940623,1],[.976355,.971737,.950704,1],[.983195,.97558,.960181,1],[.990402,.979395,.968966,1],[.99793,.983217,.97692,1]];break;default:throw Error("No such colormap '"+t+"'")}}}onInit(){this.wrapper||this.createWrapper(),this.canvasContainer||this.createCanvas(),this.container=this.wavesurfer.getWrapper(),this.container.appendChild(this.wrapper),this.wavesurfer.options.fillParent&&Object.assign(this.wrapper.style,{width:"100%",overflowX:"hidden",overflowY:"hidden"}),this.subscriptions.push(this.wavesurfer.on("timeupdate",(e=>{this.updatePosition(e)}))),this.subscriptions.push(this.wavesurfer.on("scroll",(()=>{this.handleScroll()}))),this.subscriptions.push(this.wavesurfer.on("redraw",(()=>this.handleRedraw()))),this.subscriptions.push(this.wavesurfer.on("ready",(()=>{const e=this.wavesurfer.getDecodedData();e&&this.render(e)}))),this.wavesurfer.getDecodedData()&&setTimeout((()=>{this.render(this.wavesurfer.getDecodedData())}),0)}createWrapper(){this.wrapper=r("div",{style:{display:"block",position:"relative",userSelect:"none"}}),this.options.labels&&(this.labelsEl=r("canvas",{part:"spec-labels",style:{position:"absolute",zIndex:9,width:"55px",height:"100%"}},this.wrapper)),this.wrapper.addEventListener("click",this._onWrapperClick)}createCanvas(){this.canvasContainer=r("div",{style:{position:"absolute",left:0,top:0,width:"100%",height:"100%",zIndex:4}},this.wrapper)}handleRedraw(){const e=this.pixelsPerSecond;this.pixelsPerSecond=this.getPixelsPerSecond(),e!==this.pixelsPerSecond&&this.segments.size>0&&this.updateSegmentPositions(e,this.pixelsPerSecond),this.scheduleRender()}updateSegmentPositions(e,t){for(const e of this.segments.values())if(e.startPixel=e.startTime*t,e.endPixel=e.endTime*t,e.canvas){const t=e.endPixel-e.startPixel;e.canvas.style.left=`${e.startPixel}px`,e.canvas.style.width=`${t}px`}const i=t/e;(i<.5||i>2)&&this.scheduleSegmentQualityUpdate()}scheduleSegmentQualityUpdate(){this.qualityUpdateTimeout&&clearTimeout(this.qualityUpdateTimeout),this.qualityUpdateTimeout=window.setTimeout((()=>{this.updateVisibleSegmentQuality()}),500)}updateVisibleSegmentQuality(){return e(this,void 0,void 0,(function*(){var e;if(!this.buffer)return;const t=null===(e=this.wavesurfer)||void 0===e?void 0:e.getWrapper();if(!t)return;const i=this.getScrollLeft(t),n=this.getViewportWidth(t),r=this.getPixelsPerSecond(),s=i/r,a=(i+n)/r,o=Array.from(this.segments.values()).filter((e=>e.startTime<a&&e.endTime>s));if(0!==o.length)for(const e of o)e.canvas&&(yield this.renderSegment(e))}))}getScrollLeft(e){var t;if(e.scrollLeft)return e.scrollLeft;if(null===(t=e.parentElement)||void 0===t?void 0:t.scrollLeft)return e.parentElement.scrollLeft;if(document.documentElement.scrollLeft)return document.documentElement.scrollLeft;if(document.body.scrollLeft)return document.body.scrollLeft;if(window.scrollX)return window.scrollX;if(window.pageXOffset)return window.pageXOffset;let i=e.parentElement;for(;i;){const e=window.getComputedStyle(i);if(("scroll"===e.overflowX||"auto"===e.overflowX)&&i.scrollLeft>0)return i.scrollLeft;i=i.parentElement}return 0}getViewportWidth(e){var t,i;const n=e.offsetWidth||e.clientWidth,r=(null===(t=e.parentElement)||void 0===t?void 0:t.offsetWidth)||(null===(i=e.parentElement)||void 0===i?void 0:i.clientWidth),s=window.innerWidth;return r&&r<n?r:Math.min(n||800,.8*s)}handleScroll(){var e,t;const i=null===(e=this.wavesurfer)||void 0===e?void 0:e.getWrapper();let n=0;if(null==i?void 0:i.scrollLeft)n=i.scrollLeft;else if(null===(t=null==i?void 0:i.parentElement)||void 0===t?void 0:t.scrollLeft)n=i.parentElement.scrollLeft;else if(document.documentElement.scrollLeft||document.body.scrollLeft)n=document.documentElement.scrollLeft||document.body.scrollLeft;else if(window.scrollX||window.pageXOffset)n=window.scrollX||window.pageXOffset;else if(i){let e=i.parentElement;for(;e&&0===n;){const t=window.getComputedStyle(e);if(("scroll"===t.overflowX||"auto"===t.overflowX)&&e.scrollLeft>0){n=e.scrollLeft;break}e=e.parentElement}}this.getPixelsPerSecond(),this.scheduleRender()}updatePosition(e){this.currentPosition=e,this.scheduleRender()}scheduleRender(){this.renderTimeout&&clearTimeout(this.renderTimeout),this.renderTimeout=window.setTimeout((()=>{this.renderVisibleWindow()}),16)}renderVisibleWindow(){return e(this,void 0,void 0,(function*(){var e;if(!this.isRendering&&this.buffer){this.isRendering=!0;try{const t=null===(e=this.wavesurfer)||void 0===e?void 0:e.getWrapper();if(!t)return;const i=this.getScrollLeft(t),n=this.getViewportWidth(t),r=this.getPixelsPerSecond(),s=(this.buffer.duration,i/r),a=(i+n)/r,o=a-s;let l=Math.min(2,.5*o);o>30&&(console.warn(`⚠️ Large visible duration: ${o.toFixed(1)}s - limiting buffer`),l=1);const h=Math.max(0,s-l),f=Math.min(this.buffer.duration,a+l);yield this.generateSegments(h,f)}finally{this.isRendering=!1}}}))}generateSegments(t,i){return e(this,void 0,void 0,(function*(){if(!this.buffer)return;const e=this.getPixelsPerSecond(),n=this.getWidth(),r=this.buffer.duration,s=r*e<=n&&r<=60;let a,o;if(s?(a=n,o=r):(a=15e3,o=a/e),this.segments.size>0)for(const[e,t]of this.segments);const l=this.findUncoveredTimeRanges(t,i,o);if(0!==l.length){for(const t of l)for(let i=t.start;i<t.end;i+=o){const r=i,a=Math.min(i+o,t.end,this.buffer.duration),l=`${Math.floor(10*r)}_${Math.floor(10*a)}`;if(this.segments.has(l))continue;performance.now();const h=yield this.calculateFrequencies(r,a);if(performance.now(),h&&h.length>0){const t={startTime:r,endTime:a,startPixel:s?0:r*e,endPixel:s?n:a*e,frequencies:h};this.segments.set(l,t),performance.now(),yield this.renderSegment(t),performance.now(),this.emitProgress()}}this.isProgressiveLoading||this.startProgressiveLoading()}}))}findUncoveredTimeRanges(e,t,i){const n=Array.from(this.segments.values()).sort(((e,t)=>e.startTime-t.startTime)),r=[];let s=e;for(const e of n){if(s<e.startTime&&s<t){const i=Math.min(e.startTime,t);r.push({start:s,end:i})}if(s=Math.max(s,e.endTime),s>=t)break}return s<t&&r.push({start:s,end:t}),r}startProgressiveLoading(){!this.isProgressiveLoading&&this.buffer&&this.progressiveLoading&&(this.isProgressiveLoading=!0,this.progressiveLoadTimeout=window.setTimeout((()=>{this.progressiveLoadNextSegment()}),1e3))}progressiveLoadNextSegment(){return e(this,void 0,void 0,(function*(){if(!this.buffer||!this.isProgressiveLoading)return;const e=15e3/this.getPixelsPerSecond(),t=this.buffer.duration;let i=0;const n=[];for(const e of this.segments.values())n.push({start:e.startTime,end:e.endTime});n.sort(((e,t)=>e.start-t.start));for(let r=0;r<t;r+=e){const s=Math.min(r+e,t);if(!n.some((e=>r>=e.start&&s<=e.end))){i=r;break}}if(i<t){const n=Math.min(i+e,t);try{yield this.generateSegments(i,n),this.progressiveLoadTimeout=window.setTimeout((()=>{this.progressiveLoadNextSegment()}),5e3)}catch(e){this._stopProgressiveLoading()}}else this._stopProgressiveLoading()}))}_stopProgressiveLoading(){this.isProgressiveLoading=!1,this.progressiveLoadTimeout&&(clearTimeout(this.progressiveLoadTimeout),this.progressiveLoadTimeout=null)}getLoadingProgress(){if(!this.buffer)return 0;const e=this.buffer.duration,t=15e3/this.getPixelsPerSecond(),i=Math.ceil(e/t);if(0===i)return 100;const n=this.segments.size;return Math.min(100,n/i*100)}emitProgress(){const e=this.getLoadingProgress()/100;this.emit("progress",e)}calculateFrequencies(t,i){return e(this,void 0,void 0,(function*(){if(!this.buffer)return[];const e=performance.now();if(this.buffer.sampleRate,!this.options.splitChannels||this.buffer.numberOfChannels,this.worker)try{const e=yield this.calculateFrequenciesWithWorker(t,i);performance.now();return e}catch(e){console.warn("Worker calculation failed, falling back to main thread:",e)}return this.calculateFrequenciesMainThread(t,i)}))}calculateFrequenciesWithWorker(t,i){return e(this,void 0,void 0,(function*(){if(!this.buffer||!this.worker)throw new Error("Worker not available");const e=this.buffer.sampleRate,n=this.options.splitChannels?this.buffer.numberOfChannels:1;let r=this.noverlap;if(!r){const n=(i-t)*this.getPixelsPerSecond(),s=Math.floor(t*e),a=(Math.floor(i*e)-s)/n;r=Math.max(0,Math.round(this.fftSamples-a))}const s=[];for(let e=0;e<n;e++)s.push(this.buffer.getChannelData(e));const a=`${Date.now()}_${Math.random()}`,o=new Promise(((e,t)=>{this.workerPromises.set(a,{resolve:e,reject:t}),setTimeout((()=>{this.workerPromises.has(a)&&(this.workerPromises.delete(a),t(new Error("Worker timeout")))}),3e4)}));return this.worker.postMessage({type:"calculateFrequencies",id:a,audioData:s,options:{startTime:t,endTime:i,sampleRate:e,fftSamples:this.fftSamples,windowFunc:this.windowFunc,alpha:this.alpha,noverlap:r,scale:this.scale,gainDB:this.gainDB,rangeDB:this.rangeDB,splitChannels:this.options.splitChannels||!1}}),o}))}calculateFrequenciesMainThread(t,i){return e(this,void 0,void 0,(function*(){if(!this.buffer)return[];const e=this.buffer.sampleRate,n=Math.floor(t*e),r=Math.floor(i*e),s=this.options.splitChannels?this.buffer.numberOfChannels:1;this.fft||(this.fft=new a(this.fftSamples,e,this.windowFunc,this.alpha));let o=this.noverlap;if(!o){const e=(r-n)/((i-t)*this.getPixelsPerSecond());o=Math.max(0,Math.round(this.fftSamples-e))}const l=.5*this.fftSamples;o=Math.min(o,l);const h=Math.max(64,.25*this.fftSamples),f=Math.max(h,this.fftSamples-o),u=[];performance.now();for(let t=0;t<s;t++){const i=this.buffer.getChannelData(t),s=[];for(let t=n;t+this.fftSamples<r;t+=f){const n=i.slice(t,t+this.fftSamples);let r=this.fft.calculateSpectrum(n);const a=this.getFilterBank(e);a&&(r=this.applyFilterBank(r,a));const o=new Uint8Array(r.length),l=this.gainDB+this.rangeDB;for(let e=0;e<r.length;e++){const t=r[e]>1e-12?r[e]:1e-12,i=20*Math.log10(t);i<-l?o[e]=0:i>-this.gainDB?o[e]=255:o[e]=Math.round((i+this.gainDB)/this.rangeDB*255)}s.push(o)}u.push(s)}return performance.now(),u}))}renderSegment(t){return e(this,void 0,void 0,(function*(){var e;const i=t.endPixel-t.startPixel,n=this.height*t.frequencies.length,r=document.createElement("canvas");r.width=Math.round(i),r.height=Math.round(n),r.style.position="absolute",r.style.left=`${t.startPixel}px`,r.style.top="0",r.style.width=`${i}px`,r.style.height=`${n}px`;const s=r.getContext("2d");if(!s)return;const a=(null===(e=this.buffer)||void 0===e?void 0:e.sampleRate)?this.buffer.sampleRate/2:0,o=this.frequencyMin,l=this.frequencyMax||a;for(let e=0;e<t.frequencies.length;e++)yield this.renderChannelToCanvas(t.frequencies[e],s,i,this.height,e*this.height,a,o,l);t.canvas=r,this.canvasContainer.appendChild(r)}))}renderChannelToCanvas(t,i,n,r,s,a,o,l){return e(this,void 0,void 0,(function*(){if(0===t.length)return;const e=t[0].length,h=new ImageData(t.length,e),f=h.data;for(let i=0;i<t.length;i++){const n=t[i];for(let r=0;r<e;r++){const s=Math.min(255,Math.max(0,n[r])),a=this.colorMap[s],o=4*((e-r-1)*t.length+i);f[o]=255*a[0],f[o+1]=255*a[1],f[o+2]=255*a[2],f[o+3]=255*a[3]}}const u=this.hzToScale(o)/this.hzToScale(a),c=this.hzToScale(l)/this.hzToScale(a),d=Math.min(1,c),p=r*d/c,m=s+r*(1-d/c),g=Math.round(e*(1-d)),b=Math.round(e*(d-u)),w=yield createImageBitmap(h,0,g,t.length,b);i.drawImage(w,0,m,n,p),"close"in w&&w.close()}))}clearAllSegments(){for(const e of this.segments.values())e.canvas&&e.canvas.remove();this.segments.clear()}getFilterBank(e){switch(this.scale){case"mel":return this.createFilterBank(this.numMelFilters,e,this.hzToMel,this.melToHz);case"logarithmic":return this.createFilterBank(this.numLogFilters,e,this.hzToLog,this.logToHz);case"bark":return this.createFilterBank(this.numBarkFilters,e,this.hzToBark,this.barkToHz);case"erb":return this.createFilterBank(this.numErbFilters,e,this.hzToErb,this.erbToHz);default:return null}}hzToMel(e){return 2595*Math.log10(1+e/700)}melToHz(e){return 700*(Math.pow(10,e/2595)-1)}hzToLog(e){return Math.log10(Math.max(1,e))}logToHz(e){return Math.pow(10,e)}hzToBark(e){let t=26.81*e/(1960+e)-.53;return t<2&&(t+=.15*(2-t)),t>20.1&&(t+=.22*(t-20.1)),t}barkToHz(e){return e<2&&(e=(e-.3)/.85),e>20.1&&(e=(e+4.422)/1.22),(e+.53)/(26.28-e)*1960}hzToErb(e){return s*Math.log10(1+.00437*e)}erbToHz(e){return(Math.pow(10,e/s)-1)/.00437}createFilterBank(e,t,i,n){const r=i(0),s=i(t/2),a=Array.from({length:e},(()=>Array(this.fftSamples/2+1).fill(0))),o=t/this.fftSamples;for(let t=0;t<e;t++){let i=n(r+t/e*(s-r)),l=Math.floor(i/o),h=l*o,f=(i-h)/((l+1)*o-h);a[t][l]=1-f,a[t][l+1]=f}return a}applyFilterBank(e,t){const i=t.length,n=Float32Array.from({length:i},(()=>0));for(let r=0;r<i;r++)for(let i=0;i<e.length;i++)n[r]+=e[i]*t[r][i];return n}freqType(e){return e>=1e3?(e/1e3).toFixed(1):Math.round(e)}unitType(e){return e>=1e3?"kHz":"Hz"}hzToScale(e){switch(this.scale){case"mel":return this.hzToMel(e);case"logarithmic":return this.hzToLog(e);case"bark":return this.hzToBark(e);case"erb":return this.hzToErb(e)}return e}scaleToHz(e){switch(this.scale){case"mel":return this.melToHz(e);case"logarithmic":return this.logToHz(e);case"bark":return this.barkToHz(e);case"erb":return this.erbToHz(e)}return e}getLabelFrequency(e,t){const i=this.hzToScale(this.frequencyMin),n=this.hzToScale(this.frequencyMax);return this.scaleToHz(i+e/t*(n-i))}loadLabels(e,t,i,n,r,s,a,o,l){e=e||"rgba(68,68,68,0)",t=t||"12px",i=i||"12px",n=n||"Helvetica",r=r||"#fff",s=s||"#fff",a=a||"center";const h=this.height||512,f=h/256*5;this.frequencyMin;this.frequencyMax;const u=this.labelsEl.getContext("2d"),c=window.devicePixelRatio;if(this.labelsEl.height=this.height*l*c,this.labelsEl.width=55*c,u.scale(c,c),u)for(let o=0;o<l;o++){let l;for(u.fillStyle=e,u.fillRect(0,o*h,55,(1+o)*h),u.fill(),l=0;l<=f;l++){u.textAlign=a,u.textBaseline="middle";const e=this.getLabelFrequency(l,f),c=this.freqType(e),d=this.unitType(e),p=16;let m=(1+o)*h-l/f*h;m=Math.min(Math.max(m,o*h+10),(1+o)*h-10),u.fillStyle=s,u.font=i+" "+n,u.fillText(d,p+24,m),u.fillStyle=r,u.font=t+" "+n,u.fillText(c.toString(),p,m)}}}render(t){return e(this,void 0,void 0,(function*(){this.buffer=t,this.pixelsPerSecond=this.getPixelsPerSecond(),this.frequencyMax=this.frequencyMax||t.sampleRate/2;const e=this.options.splitChannels?t.numberOfChannels:1;this.wrapper.style.height=this.height*e+"px",this.clearAllSegments(),this.options.labels&&this.loadLabels(this.options.labelsBackground,"12px","12px","",this.options.labelsColor,this.options.labelsHzColor||this.options.labelsColor,"center","#specLabels",e),this.scheduleRender(),this.emit("ready")}))}destroy(){this.unAll(),this.renderTimeout&&(clearTimeout(this.renderTimeout),this.renderTimeout=null),this.qualityUpdateTimeout&&(clearTimeout(this.qualityUpdateTimeout),this.qualityUpdateTimeout=null),this.stopProgressiveLoading(),this.worker&&(this.worker.terminate(),this.worker=null),this.workerBlobUrl&&(URL.revokeObjectURL(this.workerBlobUrl),this.workerBlobUrl=null);for(const[e,t]of this.workerPromises)t.reject(new Error("Plugin destroyed"));this.workerPromises.clear(),this.clearAllSegments(),this.canvasContainer&&(this.canvasContainer.remove(),this.canvasContainer=null),this.wrapper&&(this.wrapper.remove(),this.wrapper=null),this.labelsEl&&(this.labelsEl.remove(),this.labelsEl=null),this.container=null,this.buffer=null,this.fft=null,this.isRendering=!1,this.currentPosition=0,this.pixelsPerSecond=0,super.destroy()}getWidth(){var e,t;return(null===(t=null===(e=this.wavesurfer)||void 0===e?void 0:e.getWrapper())||void 0===t?void 0:t.offsetWidth)||0}getWrapperWidth(){var e,t;return(null===(t=null===(e=this.wavesurfer)||void 0===e?void 0:e.getWrapper())||void 0===t?void 0:t.clientWidth)||0}getPixelsPerSecond(){var e;const t=null===(e=this.wavesurfer)||void 0===e?void 0:e.options.minPxPerSec;if(t&&t>0)return t;if(this.buffer){const e=this.getWidth(),t=e>0?e/this.buffer.duration:100;return Math.max(t,50)}return 50}stopProgressiveLoading(){this.isProgressiveLoading=!1,this.progressiveLoadTimeout&&(clearTimeout(this.progressiveLoadTimeout),this.progressiveLoadTimeout=null)}}export{o as default};
+/**
+ * Windowed Spectrogram plugin - Optimized for very long audio files
+ *
+ * Only renders frequency data in a sliding window around the current viewport,
+ * keeping memory usage constant regardless of audio length.
+ */
+// @ts-nocheck
+import BasePlugin from '../base-plugin.js';
+import createElement from '../dom.js';
+// Import centralized FFT functionality
+import FFT, { ERB_A } from '../fft.js';
+class WindowedSpectrogramPlugin extends BasePlugin {
+    container;
+    wrapper;
+    labelsEl;
+    canvasContainer;
+    colorMap;
+    fftSamples;
+    height;
+    noverlap;
+    windowFunc;
+    alpha;
+    frequencyMin;
+    frequencyMax;
+    gainDB;
+    rangeDB;
+    scale;
+    // Windowing properties
+    windowSize; // seconds
+    bufferSize; // pixels
+    progressiveLoading;
+    useWebWorker;
+    segments = new Map();
+    buffer = null;
+    currentPosition = 0; // current playback position in seconds
+    pixelsPerSecond = 0;
+    isRendering = false;
+    renderTimeout = null;
+    // FFT and processing
+    fft = null;
+    numMelFilters;
+    numLogFilters;
+    numBarkFilters;
+    numErbFilters;
+    // Progressive loading
+    progressiveLoadTimeout = null;
+    isProgressiveLoading = false;
+    nextProgressiveSegmentTime = 0; // Track which segment to load next
+    // Web worker for FFT calculations
+    worker = null;
+    workerPromises = new Map();
+    workerBlobUrl = null;
+    static create(options) {
+        return new WindowedSpectrogramPlugin(options || {});
+    }
+    constructor(options) {
+        super(options);
+        this.container =
+            'string' == typeof options.container ? document.querySelector(options.container) : options.container;
+        // Set up color map
+        this.setupColorMap(options.colorMap);
+        // FFT and processing options
+        this.fftSamples = options.fftSamples || 512;
+        this.height = options.height || 200;
+        this.noverlap = options.noverlap || null; // Will be calculated later based on canvas size, like normal plugin
+        this.windowFunc = options.windowFunc || 'hann';
+        this.alpha = options.alpha;
+        this.frequencyMin = options.frequencyMin || 0;
+        this.frequencyMax = options.frequencyMax || 0;
+        this.gainDB = options.gainDB ?? 20;
+        this.rangeDB = options.rangeDB ?? 80;
+        this.scale = options.scale || 'mel';
+        // Windowing options
+        this.windowSize = options.windowSize || 30; // 30 seconds window
+        this.bufferSize = options.bufferSize || 5000; // 5000 pixels buffer
+        // Progressive loading (disabled by default to avoid system overload)
+        this.progressiveLoading = options.progressiveLoading === true;
+        // Web worker (disabled by default in SSR environments like Next.js)
+        this.useWebWorker = options.useWebWorker === true && typeof window !== 'undefined';
+        // Filter banks
+        this.numMelFilters = this.fftSamples / 2;
+        this.numLogFilters = this.fftSamples / 2;
+        this.numBarkFilters = this.fftSamples / 2;
+        this.numErbFilters = this.fftSamples / 2;
+        this.createWrapper();
+        this.createCanvas();
+        // Initialize worker if enabled
+        if (this.useWebWorker) {
+            this.initializeWorker();
+        }
+    }
+    initializeWorker() {
+        // Skip worker initialization in SSR environments (Next.js server-side)
+        if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+            console.warn('Worker not available in this environment, using main thread calculation');
+            return;
+        }
+        try {
+            // Create blob URL from worker code
+            const workerBlob = this.createWorkerBlob();
+            const workerUrl = URL.createObjectURL(workerBlob);
+            this.worker = new Worker(workerUrl);
+            this.worker.onmessage = (e) => {
+                const { type, id, result, error } = e.data;
+                if (type === 'frequenciesResult') {
+                    const promise = this.workerPromises.get(id);
+                    if (promise) {
+                        this.workerPromises.delete(id);
+                        if (error) {
+                            promise.reject(new Error(error));
+                        }
+                        else {
+                            promise.resolve(result);
+                        }
+                    }
+                }
+            };
+            this.worker.onerror = (error) => {
+                console.warn('Spectrogram worker error, falling back to main thread:', error);
+                // Clean up blob URL
+                URL.revokeObjectURL(workerUrl);
+                // Fallback to main thread calculation
+                this.worker = null;
+            };
+            // Store URL for cleanup
+            this.workerBlobUrl = workerUrl;
+        }
+        catch (error) {
+            console.warn('Failed to initialize worker, falling back to main thread:', error);
+            this.worker = null;
+        }
+    }
+    createWorkerBlob() {
+        const workerCode = `
+/**
+ * Web Worker for Windowed Spectrogram Plugin
+ * Handles FFT calculations for frequency analysis
+ */
+
+// FFT Implementation - Based on https://github.com/corbanbrook/dsp.js
+function FFT(bufferSize, sampleRate, windowFunc, alpha) {
+  this.bufferSize = bufferSize
+  this.sampleRate = sampleRate
+  this.bandwidth = (2 / bufferSize) * (sampleRate / 2)
+
+  this.sinTable = new Float32Array(bufferSize)
+  this.cosTable = new Float32Array(bufferSize)
+  this.windowValues = new Float32Array(bufferSize)
+  this.reverseTable = new Uint32Array(bufferSize)
+
+  this.peakBand = 0
+  this.peak = 0
+
+  var i
+  switch (windowFunc) {
+    case 'bartlett':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = (2 / (bufferSize - 1)) * ((bufferSize - 1) / 2 - Math.abs(i - (bufferSize - 1) / 2))
+      }
+      break
+    case 'bartlettHann':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] =
+          0.62 - 0.48 * Math.abs(i / (bufferSize - 1) - 0.5) - 0.38 * Math.cos((Math.PI * 2 * i) / (bufferSize - 1))
+      }
+      break
+    case 'blackman':
+      alpha = alpha || 0.16
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] =
+          (1 - alpha) / 2 -
+          0.5 * Math.cos((Math.PI * 2 * i) / (bufferSize - 1)) +
+          (alpha / 2) * Math.cos((4 * Math.PI * i) / (bufferSize - 1))
+      }
+      break
+    case 'cosine':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = Math.cos((Math.PI * i) / (bufferSize - 1) - Math.PI / 2)
+      }
+      break
+    case 'gauss':
+      alpha = alpha || 0.25
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = Math.pow(
+          Math.E,
+          -0.5 * Math.pow((i - (bufferSize - 1) / 2) / ((alpha * (bufferSize - 1)) / 2), 2),
+        )
+      }
+      break
+    case 'hamming':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = 0.54 - 0.46 * Math.cos((Math.PI * 2 * i) / (bufferSize - 1))
+      }
+      break
+    case 'hann':
+    case undefined:
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = 0.5 * (1 - Math.cos((Math.PI * 2 * i) / (bufferSize - 1)))
+      }
+      break
+    case 'lanczoz':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] =
+          Math.sin(Math.PI * ((2 * i) / (bufferSize - 1) - 1)) / (Math.PI * ((2 * i) / (bufferSize - 1) - 1))
+      }
+      break
+    case 'rectangular':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = 1
+      }
+      break
+    case 'triangular':
+      for (i = 0; i < bufferSize; i++) {
+        this.windowValues[i] = (2 / bufferSize) * (bufferSize / 2 - Math.abs(i - (bufferSize - 1) / 2))
+      }
+      break
+    default:
+      throw Error("No such window function '" + windowFunc + "'")
+  }
+
+  var limit = 1
+  var bit = bufferSize >> 1
+  var i
+
+  while (limit < bufferSize) {
+    for (i = 0; i < limit; i++) {
+      this.reverseTable[i + limit] = this.reverseTable[i] + bit
+    }
+
+    limit = limit << 1
+    bit = bit >> 1
+  }
+
+  for (i = 0; i < bufferSize; i++) {
+    this.sinTable[i] = Math.sin(-Math.PI / i)
+    this.cosTable[i] = Math.cos(-Math.PI / i)
+  }
+
+  this.calculateSpectrum = function (buffer) {
+    var bufferSize = this.bufferSize,
+      cosTable = this.cosTable,
+      sinTable = this.sinTable,
+      reverseTable = this.reverseTable,
+      real = new Float32Array(bufferSize),
+      imag = new Float32Array(bufferSize),
+      bSi = 2 / this.bufferSize,
+      sqrt = Math.sqrt,
+      rval,
+      ival,
+      mag,
+      spectrum = new Float32Array(bufferSize / 2)
+
+    var k = Math.floor(Math.log(bufferSize) / Math.LN2)
+
+    if (Math.pow(2, k) !== bufferSize) {
+      throw 'Invalid buffer size, must be a power of 2.'
+    }
+    if (bufferSize !== buffer.length) {
+      throw (
+        'Supplied buffer is not the same size as defined FFT. FFT Size: ' +
+        bufferSize +
+        ' Buffer Size: ' +
+        buffer.length
+      )
+    }
+
+    var halfSize = 1,
+      phaseShiftStepReal,
+      phaseShiftStepImag,
+      currentPhaseShiftReal,
+      currentPhaseShiftImag,
+      off,
+      tr,
+      ti,
+      tmpReal
+
+    for (var i = 0; i < bufferSize; i++) {
+      real[i] = buffer[reverseTable[i]] * this.windowValues[reverseTable[i]]
+      imag[i] = 0
+    }
+
+    while (halfSize < bufferSize) {
+      phaseShiftStepReal = cosTable[halfSize]
+      phaseShiftStepImag = sinTable[halfSize]
+
+      currentPhaseShiftReal = 1
+      currentPhaseShiftImag = 0
+
+      for (var fftStep = 0; fftStep < halfSize; fftStep++) {
+        var i = fftStep
+
+        while (i < bufferSize) {
+          off = i + halfSize
+          tr = currentPhaseShiftReal * real[off] - currentPhaseShiftImag * imag[off]
+          ti = currentPhaseShiftReal * imag[off] + currentPhaseShiftImag * real[off]
+
+          real[off] = real[i] - tr
+          imag[off] = imag[i] - ti
+          real[i] += tr
+          imag[i] += ti
+
+          i += halfSize << 1
+        }
+
+        tmpReal = currentPhaseShiftReal
+        currentPhaseShiftReal = tmpReal * phaseShiftStepReal - currentPhaseShiftImag * phaseShiftStepImag
+        currentPhaseShiftImag = tmpReal * phaseShiftStepImag + currentPhaseShiftImag * phaseShiftStepReal
+      }
+
+      halfSize = halfSize << 1
+    }
+
+    for (var i = 0, N = bufferSize / 2; i < N; i++) {
+      rval = real[i]
+      ival = imag[i]
+      mag = bSi * sqrt(rval * rval + ival * ival)
+
+      if (mag > this.peak) {
+        this.peakBand = i
+        this.peak = mag
+      }
+      spectrum[i] = mag
+    }
+    return spectrum
+  }
+}
+
+// Global FFT instance (reused for performance)
+let fft = null
+
+const ERB_A = (1000 * Math.log(10)) / (24.7 * 4.37)
+// Frequency scaling functions
+function hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700) }
+function melToHz(mel) { return 700 * (Math.pow(10, mel / 2595) - 1) }
+function hzToLog(hz) { return Math.log10(Math.max(1, hz)) }
+function logToHz(log) { return Math.pow(10, log) }
+function hzToBark(hz) {
+  let bark = (26.81 * hz) / (1960 + hz) - 0.53
+  if (bark < 2) bark += 0.15 * (2 - bark)
+  if (bark > 20.1) bark += 0.22 * (bark - 20.1)
+  return bark
+}
+function barkToHz(bark) {
+  if (bark < 2) bark = (bark - 0.3) / 0.85
+  if (bark > 20.1) bark = (bark + 4.422) / 1.22
+  return 1960 * ((bark + 0.53) / (26.28 - bark))
+}
+function hzToErb(hz) { return ERB_A * Math.log10(1 + hz * 0.00437) }
+function erbToHz(erb) { return (Math.pow(10, erb / ERB_A) - 1) / 0.00437 }
+
+function createFilterBank(
+  numFilters,
+  fftSamples,
+  sampleRate,
+  hzToScale,
+  scaleToHz,
+) {
+  const filterMin = hzToScale(0)
+  const filterMax = hzToScale(sampleRate / 2)
+  const filterBank = Array.from({ length: numFilters }, () => Array(fftSamples / 2 + 1).fill(0))
+  const scale = sampleRate / fftSamples
+  
+  for (let i = 0; i < numFilters; i++) {
+    let hz = scaleToHz(filterMin + (i / numFilters) * (filterMax - filterMin))
+    let j = Math.floor(hz / scale)
+    let hzLow = j * scale
+    let hzHigh = (j + 1) * scale
+    let r = (hz - hzLow) / (hzHigh - hzLow)
+    filterBank[i][j] = 1 - r
+    filterBank[i][j + 1] = r
+  }
+  return filterBank
+}
+
+function applyFilterBank(fftPoints, filterBank) {
+  const numFilters = filterBank.length
+  const logSpectrum = Float32Array.from({ length: numFilters }, () => 0)
+  for (let i = 0; i < numFilters; i++) {
+    for (let j = 0; j < fftPoints.length; j++) {
+      logSpectrum[i] += fftPoints[j] * filterBank[i][j]
+    }
+  }
+  return logSpectrum
+}
+
+// Worker message handler
+self.onmessage = function(e) {
+  const { type, id, audioData, options } = e.data
+  
+  if (type === 'calculateFrequencies') {
+    try {
+      const result = calculateFrequencies(audioData, options)
+      self.postMessage({
+        type: 'frequenciesResult',
+        id: id,
+        result: result
+      })
+    } catch (error) {
+      self.postMessage({
+        type: 'frequenciesResult',
+        id: id,
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+  }
+}
+
+/**
+ * Calculate frequency data for audio channels
+ */
+function calculateFrequencies(audioChannels, options) {
+  const {
+    startTime, endTime, sampleRate, fftSamples, windowFunc, alpha,
+    noverlap, scale, gainDB, rangeDB, splitChannels
+  } = options
+
+  const startSample = Math.floor(startTime * sampleRate)
+  const endSample = Math.floor(endTime * sampleRate)
+  const channels = splitChannels ? audioChannels.length : 1
+
+  // Initialize FFT (reuse if possible for performance)
+  if (!fft || fft.bufferSize !== fftSamples) {
+    fft = new FFT(fftSamples, sampleRate, windowFunc, alpha)
+  }
+
+  // Create filter bank based on scale (same logic as main thread)
+  let filterBank = null
+  const numFilters = fftSamples / 2 // Same as main thread
+  
+  switch (scale) {
+    case 'mel':
+      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToMel, melToHz)
+      break
+    case 'logarithmic':
+      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToLog, logToHz)
+      break
+    case 'bark':
+      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToBark, barkToHz)
+      break
+    case 'erb':
+      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToErb, erbToHz)
+      break
+    case 'linear':
+    default:
+      // No filter bank for linear scale
+      filterBank = null
+      break
+  }
+
+  // Calculate hop size
+  let actualNoverlap = noverlap || Math.max(0, Math.round(fftSamples * 0.5))
+  const maxOverlap = fftSamples * 0.5
+  actualNoverlap = Math.min(actualNoverlap, maxOverlap)
+  const minHopSize = Math.max(64, fftSamples * 0.25)
+  const hopSize = Math.max(minHopSize, fftSamples - actualNoverlap)
+
+  const frequencies = []
+
+  for (let c = 0; c < channels; c++) {
+    const channelData = audioChannels[c]
+    const channelFreq = []
+
+    for (let sample = startSample; sample + fftSamples < endSample; sample += hopSize) {
+      const segment = channelData.slice(sample, sample + fftSamples)
+      let spectrum = fft.calculateSpectrum(segment)
+      
+      // Apply filter bank if specified (same as main thread)
+      if (filterBank) {
+        spectrum = applyFilterBank(spectrum, filterBank)
+      }
+
+      // Convert to uint8 color indices
+      const freqBins = new Uint8Array(spectrum.length)
+      const gainPlusRange = gainDB + rangeDB
+      
+      for (let j = 0; j < spectrum.length; j++) {
+        const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
+        const valueDB = 20 * Math.log10(magnitude)
+        
+        if (valueDB < -gainPlusRange) {
+          freqBins[j] = 0
+        } else if (valueDB > -gainDB) {
+          freqBins[j] = 255
+        } else {
+          freqBins[j] = Math.round(((valueDB + gainDB) / rangeDB) * 255)
+        }
+      }
+      channelFreq.push(freqBins)
+    }
+    frequencies.push(channelFreq)
+  }
+
+  return frequencies
+}
+`;
+        return new Blob([workerCode], { type: 'application/javascript' });
+    }
+    setupColorMap(colorMap) {
+        if (colorMap && typeof colorMap !== 'string') {
+            if (colorMap.length < 256) {
+                throw new Error('Colormap must contain 256 elements');
+            }
+            this.colorMap = colorMap;
+        }
+        else {
+            const mapType = colorMap || 'roseus';
+            switch (mapType) {
+                case 'gray':
+                    this.colorMap = [];
+                    for (let i = 0; i < 256; i++) {
+                        const val = (255 - i) / 256;
+                        this.colorMap.push([val, val, val, 1]);
+                    }
+                    break;
+                case 'igray':
+                    this.colorMap = [];
+                    for (let i = 0; i < 256; i++) {
+                        const val = i / 256;
+                        this.colorMap.push([val, val, val, 1]);
+                    }
+                    break;
+                case 'roseus':
+                    // Full roseus colormap
+                    this.colorMap = [[0.004528, 0.004341, 0.004307, 1], [0.005625, 0.006156, 0.006010, 1], [0.006628, 0.008293, 0.008161, 1], [0.007551, 0.010738, 0.010790, 1], [0.008382, 0.013482, 0.013941, 1], [0.009111, 0.016520, 0.017662, 1], [0.009727, 0.019846, 0.022009, 1], [0.010223, 0.023452, 0.027035, 1], [0.010593, 0.027331, 0.032799, 1], [0.010833, 0.031475, 0.039361, 1], [0.010941, 0.035875, 0.046415, 1], [0.010918, 0.040520, 0.053597, 1], [0.010768, 0.045158, 0.060914, 1], [0.010492, 0.049708, 0.068367, 1], [0.010098, 0.054171, 0.075954, 1], [0.009594, 0.058549, 0.083672, 1], [0.008989, 0.062840, 0.091521, 1], [0.008297, 0.067046, 0.099499, 1], [0.007530, 0.071165, 0.107603, 1], [0.006704, 0.075196, 0.115830, 1], [0.005838, 0.079140, 0.124178, 1], [0.004949, 0.082994, 0.132643, 1], [0.004062, 0.086758, 0.141223, 1], [0.003198, 0.090430, 0.149913, 1], [0.002382, 0.094010, 0.158711, 1], [0.001643, 0.097494, 0.167612, 1], [0.001009, 0.100883, 0.176612, 1], [0.000514, 0.104174, 0.185704, 1], [0.000187, 0.107366, 0.194886, 1], [0.000066, 0.110457, 0.204151, 1], [0.000186, 0.113445, 0.213496, 1], [0.000587, 0.116329, 0.222914, 1], [0.001309, 0.119106, 0.232397, 1], [0.002394, 0.121776, 0.241942, 1], [0.003886, 0.124336, 0.251542, 1], [0.005831, 0.126784, 0.261189, 1], [0.008276, 0.129120, 0.270876, 1], [0.011268, 0.131342, 0.280598, 1], [0.014859, 0.133447, 0.290345, 1], [0.019100, 0.135435, 0.300111, 1], [0.024043, 0.137305, 0.309888, 1], [0.029742, 0.139054, 0.319669, 1], [0.036252, 0.140683, 0.329441, 1], [0.043507, 0.142189, 0.339203, 1], [0.050922, 0.143571, 0.348942, 1], [0.058432, 0.144831, 0.358649, 1], [0.066041, 0.145965, 0.368319, 1], [0.073744, 0.146974, 0.377938, 1], [0.081541, 0.147858, 0.387501, 1], [0.089431, 0.148616, 0.396998, 1], [0.097411, 0.149248, 0.406419, 1], [0.105479, 0.149754, 0.415755, 1], [0.113634, 0.150134, 0.424998, 1], [0.121873, 0.150389, 0.434139, 1], [0.130192, 0.150521, 0.443167, 1], [0.138591, 0.150528, 0.452075, 1], [0.147065, 0.150413, 0.460852, 1], [0.155614, 0.150175, 0.469493, 1], [0.164232, 0.149818, 0.477985, 1], [0.172917, 0.149343, 0.486322, 1], [0.181666, 0.148751, 0.494494, 1], [0.190476, 0.148046, 0.502493, 1], [0.199344, 0.147229, 0.510313, 1], [0.208267, 0.146302, 0.517944, 1], [0.217242, 0.145267, 0.525380, 1], [0.226264, 0.144131, 0.532613, 1], [0.235331, 0.142894, 0.539635, 1], [0.244440, 0.141559, 0.546442, 1], [0.253587, 0.140131, 0.553026, 1], [0.262769, 0.138615, 0.559381, 1], [0.271981, 0.137016, 0.565500, 1], [0.281222, 0.135335, 0.571381, 1], [0.290487, 0.133581, 0.577017, 1], [0.299774, 0.131757, 0.582404, 1], [0.309080, 0.129867, 0.587538, 1], [0.318399, 0.127920, 0.592415, 1], [0.327730, 0.125921, 0.597032, 1], [0.337069, 0.123877, 0.601385, 1], [0.346413, 0.121793, 0.605474, 1], [0.355758, 0.119678, 0.609295, 1], [0.365102, 0.117540, 0.612846, 1], [0.374443, 0.115386, 0.616127, 1], [0.383774, 0.113226, 0.619138, 1], [0.393096, 0.111066, 0.621876, 1], [0.402404, 0.108918, 0.624343, 1], [0.411694, 0.106794, 0.626540, 1], [0.420967, 0.104698, 0.628466, 1], [0.430217, 0.102645, 0.630123, 1], [0.439442, 0.100647, 0.631513, 1], [0.448637, 0.098717, 0.632638, 1], [0.457805, 0.096861, 0.633499, 1], [0.466940, 0.095095, 0.634100, 1], [0.476040, 0.093433, 0.634443, 1], [0.485102, 0.091885, 0.634532, 1], [0.494125, 0.090466, 0.634370, 1], [0.503104, 0.089190, 0.633962, 1], [0.512041, 0.088067, 0.633311, 1], [0.520931, 0.087108, 0.632420, 1], [0.529773, 0.086329, 0.631297, 1], [0.538564, 0.085738, 0.629944, 1], [0.547302, 0.085346, 0.628367, 1], [0.555986, 0.085162, 0.626572, 1], [0.564615, 0.085190, 0.624563, 1], [0.573187, 0.085439, 0.622345, 1], [0.581698, 0.085913, 0.619926, 1], [0.590149, 0.086615, 0.617311, 1], [0.598538, 0.087543, 0.614503, 1], [0.606862, 0.088700, 0.611511, 1], [0.615120, 0.090084, 0.608343, 1], [0.623312, 0.091690, 0.605001, 1], [0.631438, 0.093511, 0.601489, 1], [0.639492, 0.095546, 0.597821, 1], [0.647476, 0.097787, 0.593999, 1], [0.655389, 0.100226, 0.590028, 1], [0.663230, 0.102856, 0.585914, 1], [0.670995, 0.105669, 0.581667, 1], [0.678686, 0.108658, 0.577291, 1], [0.686302, 0.111813, 0.572790, 1], [0.693840, 0.115129, 0.568175, 1], [0.701300, 0.118597, 0.563449, 1], [0.708682, 0.122209, 0.558616, 1], [0.715984, 0.125959, 0.553687, 1], [0.723206, 0.129840, 0.548666, 1], [0.730346, 0.133846, 0.543558, 1], [0.737406, 0.137970, 0.538366, 1], [0.744382, 0.142209, 0.533101, 1], [0.751274, 0.146556, 0.527767, 1], [0.758082, 0.151008, 0.522369, 1], [0.764805, 0.155559, 0.516912, 1], [0.771443, 0.160206, 0.511402, 1], [0.777995, 0.164946, 0.505845, 1], [0.784459, 0.169774, 0.500246, 1], [0.790836, 0.174689, 0.494607, 1], [0.797125, 0.179688, 0.488935, 1], [0.803325, 0.184767, 0.483238, 1], [0.809435, 0.189925, 0.477518, 1], [0.815455, 0.195160, 0.471781, 1], [0.821384, 0.200471, 0.466028, 1], [0.827222, 0.205854, 0.460267, 1], [0.832968, 0.211308, 0.454505, 1], [0.838621, 0.216834, 0.448738, 1], [0.844181, 0.222428, 0.442979, 1], [0.849647, 0.228090, 0.437230, 1], [0.855019, 0.233819, 0.431491, 1], [0.860295, 0.239613, 0.425771, 1], [0.865475, 0.245471, 0.420074, 1], [0.870558, 0.251393, 0.414403, 1], [0.875545, 0.257380, 0.408759, 1], [0.880433, 0.263427, 0.403152, 1], [0.885223, 0.269535, 0.397585, 1], [0.889913, 0.275705, 0.392058, 1], [0.894503, 0.281934, 0.386578, 1], [0.898993, 0.288222, 0.381152, 1], [0.903381, 0.294569, 0.375781, 1], [0.907667, 0.300974, 0.370469, 1], [0.911849, 0.307435, 0.365223, 1], [0.915928, 0.313953, 0.360048, 1], [0.919902, 0.320527, 0.354948, 1], [0.923771, 0.327155, 0.349928, 1], [0.927533, 0.333838, 0.344994, 1], [0.931188, 0.340576, 0.340149, 1], [0.934736, 0.347366, 0.335403, 1], [0.938175, 0.354207, 0.330762, 1], [0.941504, 0.361101, 0.326229, 1], [0.944723, 0.368045, 0.321814, 1], [0.947831, 0.375039, 0.317523, 1], [0.950826, 0.382083, 0.313364, 1], [0.953709, 0.389175, 0.309345, 1], [0.956478, 0.396314, 0.305477, 1], [0.959133, 0.403499, 0.301766, 1], [0.961671, 0.410731, 0.298221, 1], [0.964093, 0.418008, 0.294853, 1], [0.966399, 0.425327, 0.291676, 1], [0.968586, 0.432690, 0.288696, 1], [0.970654, 0.440095, 0.285926, 1], [0.972603, 0.447540, 0.283380, 1], [0.974431, 0.455025, 0.281067, 1], [0.976139, 0.462547, 0.279003, 1], [0.977725, 0.470107, 0.277198, 1], [0.979188, 0.477703, 0.275666, 1], [0.980529, 0.485332, 0.274422, 1], [0.981747, 0.492995, 0.273476, 1], [0.982840, 0.500690, 0.272842, 1], [0.983808, 0.508415, 0.272532, 1], [0.984653, 0.516168, 0.272560, 1], [0.985373, 0.523948, 0.272937, 1], [0.985966, 0.531754, 0.273673, 1], [0.986436, 0.539582, 0.274779, 1], [0.986780, 0.547434, 0.276264, 1], [0.986998, 0.555305, 0.278135, 1], [0.987091, 0.563195, 0.280401, 1], [0.987061, 0.571100, 0.283066, 1], [0.986907, 0.579019, 0.286137, 1], [0.986629, 0.586950, 0.289615, 1], [0.986229, 0.594891, 0.293503, 1], [0.985709, 0.602839, 0.297802, 1], [0.985069, 0.610792, 0.302512, 1], [0.984310, 0.618748, 0.307632, 1], [0.983435, 0.626704, 0.313159, 1], [0.982445, 0.634657, 0.319089, 1], [0.981341, 0.642606, 0.325420, 1], [0.980130, 0.650546, 0.332144, 1], [0.978812, 0.658475, 0.339257, 1], [0.977392, 0.666391, 0.346753, 1], [0.975870, 0.674290, 0.354625, 1], [0.974252, 0.682170, 0.362865, 1], [0.972545, 0.690026, 0.371466, 1], [0.970750, 0.697856, 0.380419, 1], [0.968873, 0.705658, 0.389718, 1], [0.966921, 0.713426, 0.399353, 1], [0.964901, 0.721157, 0.409313, 1], [0.962815, 0.728851, 0.419594, 1], [0.960677, 0.736500, 0.430181, 1], [0.958490, 0.744103, 0.441070, 1], [0.956263, 0.751656, 0.452248, 1], [0.954009, 0.759153, 0.463702, 1], [0.951732, 0.766595, 0.475429, 1], [0.949445, 0.773974, 0.487414, 1], [0.947158, 0.781289, 0.499647, 1], [0.944885, 0.788535, 0.512116, 1], [0.942634, 0.795709, 0.524811, 1], [0.940423, 0.802807, 0.537717, 1], [0.938261, 0.809825, 0.550825, 1], [0.936163, 0.816760, 0.564121, 1], [0.934146, 0.823608, 0.577591, 1], [0.932224, 0.830366, 0.591220, 1], [0.930412, 0.837031, 0.604997, 1], [0.928727, 0.843599, 0.618904, 1], [0.927187, 0.850066, 0.632926, 1], [0.925809, 0.856432, 0.647047, 1], [0.924610, 0.862691, 0.661249, 1], [0.923607, 0.868843, 0.675517, 1], [0.922820, 0.874884, 0.689832, 1], [0.922265, 0.880812, 0.704174, 1], [0.921962, 0.886626, 0.718523, 1], [0.921930, 0.892323, 0.732859, 1], [0.922183, 0.897903, 0.747163, 1], [0.922741, 0.903364, 0.761410, 1], [0.923620, 0.908706, 0.775580, 1], [0.924837, 0.913928, 0.789648, 1], [0.926405, 0.919031, 0.803590, 1], [0.928340, 0.924015, 0.817381, 1], [0.930655, 0.928881, 0.830995, 1], [0.933360, 0.933631, 0.844405, 1], [0.936466, 0.938267, 0.857583, 1], [0.939982, 0.942791, 0.870499, 1], [0.943914, 0.947207, 0.883122, 1], [0.948267, 0.951519, 0.895421, 1], [0.953044, 0.955732, 0.907359, 1], [0.958246, 0.959852, 0.918901, 1], [0.963869, 0.963887, 0.930004, 1], [0.969909, 0.967845, 0.940623, 1], [0.976355, 0.971737, 0.950704, 1], [0.983195, 0.975580, 0.960181, 1], [0.990402, 0.979395, 0.968966, 1], [0.997930, 0.983217, 0.976920, 1]];
+                    break;
+                default:
+                    throw Error("No such colormap '" + mapType + "'");
+            }
+        }
+    }
+    onInit() {
+        // Recreate DOM elements if they were destroyed
+        if (!this.wrapper) {
+            this.createWrapper();
+        }
+        if (!this.canvasContainer) {
+            this.createCanvas();
+        }
+        // Always get fresh container reference to avoid stale references
+        this.container = this.wavesurfer.getWrapper();
+        this.container.appendChild(this.wrapper);
+        // Set up styling
+        if (this.wavesurfer.options.fillParent) {
+            Object.assign(this.wrapper.style, {
+                width: '100%',
+                overflowX: 'hidden',
+                overflowY: 'hidden',
+            });
+        }
+        // Listen for playback position changes
+        this.subscriptions.push(this.wavesurfer.on('timeupdate', (currentTime) => {
+            this.updatePosition(currentTime);
+        }));
+        // Listen for scroll events
+        this.subscriptions.push(this.wavesurfer.on('scroll', () => {
+            this.handleScroll();
+        }));
+        // Listen for zoom changes
+        this.subscriptions.push(this.wavesurfer.on('redraw', () => this.handleRedraw()));
+        // Listen for audio data ready
+        this.subscriptions.push(this.wavesurfer.on('ready', () => {
+            const decodedData = this.wavesurfer.getDecodedData();
+            if (decodedData) {
+                this.render(decodedData);
+            }
+        }));
+        // Trigger initial render after re-initialization
+        // This ensures the spectrogram appears even if no redraw event is fired
+        if (this.wavesurfer.getDecodedData()) {
+            // Use setTimeout to ensure DOM is fully ready
+            setTimeout(() => {
+                this.render(this.wavesurfer.getDecodedData());
+            }, 0);
+        }
+    }
+    createWrapper() {
+        this.wrapper = createElement('div', {
+            style: {
+                display: 'block',
+                position: 'relative',
+                userSelect: 'none',
+            },
+        });
+        // Labels canvas
+        if (this.options.labels) {
+            this.labelsEl = createElement('canvas', {
+                part: 'spec-labels',
+                style: {
+                    position: 'absolute',
+                    zIndex: 9,
+                    width: '55px',
+                    height: '100%',
+                },
+            }, this.wrapper);
+        }
+        // Click handler
+        this.wrapper.addEventListener('click', this._onWrapperClick);
+    }
+    createCanvas() {
+        this.canvasContainer = createElement('div', {
+            style: {
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+                zIndex: 4,
+            },
+        }, this.wrapper);
+    }
+    handleRedraw() {
+        const oldPixelsPerSecond = this.pixelsPerSecond;
+        this.pixelsPerSecond = this.getPixelsPerSecond();
+        // Only update canvas positions if zoom changed, keep frequency data!
+        if (oldPixelsPerSecond !== this.pixelsPerSecond && this.segments.size > 0) {
+            this.updateSegmentPositions(oldPixelsPerSecond, this.pixelsPerSecond);
+        }
+        this.scheduleRender();
+    }
+    updateSegmentPositions(oldPxPerSec, newPxPerSec) {
+        for (const segment of this.segments.values()) {
+            // Update pixel positions based on new zoom level
+            segment.startPixel = segment.startTime * newPxPerSec;
+            segment.endPixel = segment.endTime * newPxPerSec;
+            // Update canvas positioning and size WITHOUT recalculating frequencies
+            if (segment.canvas) {
+                const segmentWidth = segment.endPixel - segment.startPixel;
+                segment.canvas.style.left = `${segment.startPixel}px`;
+                segment.canvas.style.width = `${segmentWidth}px`;
+            }
+        }
+        // Schedule a gentle re-render of visible segments only if zoom changed significantly
+        const zoomRatio = newPxPerSec / oldPxPerSec;
+        if (zoomRatio < 0.5 || zoomRatio > 2.0) {
+            this.scheduleSegmentQualityUpdate();
+        }
+    }
+    scheduleSegmentQualityUpdate() {
+        // Debounce quality updates to avoid rapid re-renders during zoom
+        if (this.qualityUpdateTimeout) {
+            clearTimeout(this.qualityUpdateTimeout);
+        }
+        this.qualityUpdateTimeout = window.setTimeout(() => {
+            this.updateVisibleSegmentQuality();
+        }, 500); // Wait 500ms after zoom stops
+    }
+    qualityUpdateTimeout = null;
+    async updateVisibleSegmentQuality() {
+        if (!this.buffer)
+            return;
+        const wrapper = this.wavesurfer?.getWrapper();
+        if (!wrapper)
+            return;
+        // Get current viewport
+        const scrollLeft = this.getScrollLeft(wrapper);
+        const viewportWidth = this.getViewportWidth(wrapper);
+        const pixelsPerSec = this.getPixelsPerSecond();
+        const visibleStartTime = scrollLeft / pixelsPerSec;
+        const visibleEndTime = (scrollLeft + viewportWidth) / pixelsPerSec;
+        // Find segments that overlap with visible area
+        const visibleSegments = Array.from(this.segments.values()).filter(segment => segment.startTime < visibleEndTime && segment.endTime > visibleStartTime);
+        if (visibleSegments.length === 0) {
+            return;
+        }
+        // Re-render only the visible segments with current zoom level
+        for (const segment of visibleSegments) {
+            if (segment.canvas) {
+                await this.renderSegment(segment);
+            }
+        }
+    }
+    getScrollLeft(wrapper) {
+        // Try multiple sources for scroll position
+        if (wrapper.scrollLeft)
+            return wrapper.scrollLeft;
+        if (wrapper.parentElement?.scrollLeft)
+            return wrapper.parentElement.scrollLeft;
+        if (document.documentElement.scrollLeft)
+            return document.documentElement.scrollLeft;
+        if (document.body.scrollLeft)
+            return document.body.scrollLeft;
+        if (window.scrollX)
+            return window.scrollX;
+        if (window.pageXOffset)
+            return window.pageXOffset;
+        // Look for scrollable ancestors
+        let element = wrapper.parentElement;
+        while (element) {
+            const computedStyle = window.getComputedStyle(element);
+            if (computedStyle.overflowX === 'scroll' || computedStyle.overflowX === 'auto') {
+                if (element.scrollLeft > 0)
+                    return element.scrollLeft;
+            }
+            element = element.parentElement;
+        }
+        return 0;
+    }
+    getViewportWidth(wrapper) {
+        const wrapperWidth = wrapper.offsetWidth || wrapper.clientWidth;
+        const parentWidth = wrapper.parentElement?.offsetWidth || wrapper.parentElement?.clientWidth;
+        const windowWidth = window.innerWidth;
+        // Use the smallest reasonable width
+        if (parentWidth && parentWidth < wrapperWidth)
+            return parentWidth;
+        return Math.min(wrapperWidth || 800, windowWidth * 0.8);
+    }
+    handleScroll() {
+        const wrapper = this.wavesurfer?.getWrapper();
+        // Use the same scroll detection logic as renderVisibleWindow
+        let scrollLeft = 0;
+        if (wrapper?.scrollLeft) {
+            scrollLeft = wrapper.scrollLeft;
+        }
+        else if (wrapper?.parentElement?.scrollLeft) {
+            scrollLeft = wrapper.parentElement.scrollLeft;
+        }
+        else if (document.documentElement.scrollLeft || document.body.scrollLeft) {
+            scrollLeft = document.documentElement.scrollLeft || document.body.scrollLeft;
+        }
+        else if (window.scrollX || window.pageXOffset) {
+            scrollLeft = window.scrollX || window.pageXOffset;
+        }
+        else if (wrapper) {
+            // Look for scrollable ancestors
+            let element = wrapper.parentElement;
+            while (element && scrollLeft === 0) {
+                const computedStyle = window.getComputedStyle(element);
+                if (computedStyle.overflowX === 'scroll' || computedStyle.overflowX === 'auto') {
+                    if (element.scrollLeft > 0) {
+                        scrollLeft = element.scrollLeft;
+                        break;
+                    }
+                }
+                element = element.parentElement;
+            }
+        }
+        const pixelsPerSec = this.getPixelsPerSecond();
+        const currentViewTime = scrollLeft / pixelsPerSec;
+        this.scheduleRender();
+    }
+    updatePosition(currentTime) {
+        this.currentPosition = currentTime;
+        this.scheduleRender();
+    }
+    scheduleRender() {
+        if (this.renderTimeout) {
+            clearTimeout(this.renderTimeout);
+        }
+        this.renderTimeout = window.setTimeout(() => {
+            this.renderVisibleWindow();
+        }, 16); // 60fps
+    }
+    async renderVisibleWindow() {
+        if (this.isRendering || !this.buffer)
+            return;
+        this.isRendering = true;
+        try {
+            const wrapper = this.wavesurfer?.getWrapper();
+            if (!wrapper)
+                return;
+            // Use helper functions for consistency
+            const scrollLeft = this.getScrollLeft(wrapper);
+            const actualViewportWidth = this.getViewportWidth(wrapper);
+            const pixelsPerSec = this.getPixelsPerSecond();
+            const totalAudioDuration = this.buffer.duration;
+            const visibleStartTime = scrollLeft / pixelsPerSec;
+            const visibleEndTime = (scrollLeft + actualViewportWidth) / pixelsPerSec;
+            // Reasonable buffer time based on visible duration
+            const visibleDuration = visibleEndTime - visibleStartTime;
+            let bufferTimeSeconds = Math.min(2, visibleDuration * 0.5); // Buffer is at most half the visible duration or 2s
+            if (visibleDuration > 30) {
+                console.warn(`⚠️ Large visible duration: ${visibleDuration.toFixed(1)}s - limiting buffer`);
+                bufferTimeSeconds = 1; // Smaller buffer for very zoomed out views
+            }
+            const windowStartTime = Math.max(0, visibleStartTime - bufferTimeSeconds);
+            const windowEndTime = Math.min(this.buffer.duration, visibleEndTime + bufferTimeSeconds);
+            // Generate segments for this window
+            await this.generateSegments(windowStartTime, windowEndTime);
+            // Don't clean up old segments - keep them all in memory for performance
+        }
+        finally {
+            this.isRendering = false;
+        }
+    }
+    async generateSegments(startTime, endTime) {
+        if (!this.buffer)
+            return;
+        const pixelsPerSec = this.getPixelsPerSecond();
+        const containerWidth = this.getWidth(); // Get full container width
+        const totalAudioDuration = this.buffer.duration;
+        // Progressive loading always uses fixed segment sizes, never fill container mode
+        const isProgressiveLoadCall = this.isProgressiveLoading &&
+            (endTime - startTime) <= 35; // Progressive loading uses ~30s segments
+        // Calculate if this is a short audio that should fill the container
+        const totalAudioPixelWidth = totalAudioDuration * pixelsPerSec;
+        const shouldFillContainer = !isProgressiveLoadCall &&
+            totalAudioPixelWidth <= containerWidth &&
+            totalAudioDuration <= 60; // 60s max for fill mode
+        let segmentPixelWidth;
+        let segmentDuration;
+        if (isProgressiveLoadCall) {
+            // For progressive loading, respect the requested time range exactly
+            segmentDuration = endTime - startTime;
+            segmentPixelWidth = segmentDuration * pixelsPerSec;
+            console.log(`🔧 Progressive loading mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`);
+        }
+        else if (shouldFillContainer) {
+            // For short audio, create one segment that fills the entire container width
+            segmentPixelWidth = containerWidth;
+            segmentDuration = totalAudioDuration; // Use full audio duration
+            console.log(`🔧 Fill container mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`);
+        }
+        else {
+            // For long audio viewport rendering, use windowing approach
+            segmentPixelWidth = 15000; // 15000 pixels per segment
+            segmentDuration = segmentPixelWidth / pixelsPerSec; // Calculate duration based on pixel width
+            console.log(`🔧 Viewport rendering mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`);
+        }
+        // Show existing segments
+        if (this.segments.size > 0) {
+            for (const [key, segment] of this.segments) {
+            }
+        }
+        // Check coverage first to avoid duplicate work
+        const uncoveredRanges = this.findUncoveredTimeRanges(startTime, endTime, segmentDuration);
+        if (uncoveredRanges.length === 0) {
+            return;
+        }
+        let newSegmentsCreated = 0;
+        // Only generate segments for uncovered ranges
+        for (const range of uncoveredRanges) {
+            // Create segments covering this uncovered range
+            for (let time = range.start; time < range.end; time += segmentDuration) {
+                const segmentStart = time;
+                const segmentEnd = Math.min(time + segmentDuration, range.end, this.buffer.duration);
+                const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`;
+                // Double-check if segment already exists (shouldn't happen but be safe)
+                if (this.segments.has(segmentKey)) {
+                    continue;
+                }
+                newSegmentsCreated++;
+                // Calculate frequency data for this segment
+                const freqStartTime = performance.now();
+                const frequencies = await this.calculateFrequencies(segmentStart, segmentEnd);
+                const freqEndTime = performance.now();
+                if (frequencies && frequencies.length > 0) {
+                    const segment = {
+                        startTime: segmentStart,
+                        endTime: segmentEnd,
+                        startPixel: shouldFillContainer ? 0 : segmentStart * pixelsPerSec, // Start at 0 for fill mode
+                        endPixel: shouldFillContainer ? containerWidth : segmentEnd * pixelsPerSec, // End at container width for fill mode
+                        frequencies: frequencies
+                    };
+                    this.segments.set(segmentKey, segment);
+                    // Render this segment
+                    const renderStartTime = performance.now();
+                    await this.renderSegment(segment);
+                    const renderEndTime = performance.now();
+                    // Emit progress update
+                    this.emitProgress();
+                }
+                else {
+                }
+            }
+        }
+        // Start progressive loading if not already running
+        if (!this.isProgressiveLoading) {
+            this.startProgressiveLoading();
+        }
+    }
+    findUncoveredTimeRanges(startTime, endTime, segmentDuration) {
+        // Get all existing segments sorted by start time
+        const existingSegments = Array.from(this.segments.values())
+            .sort((a, b) => a.startTime - b.startTime);
+        const uncoveredRanges = [];
+        let currentTime = startTime;
+        for (const segment of existingSegments) {
+            // If there's a gap before this segment
+            if (currentTime < segment.startTime && currentTime < endTime) {
+                const gapEnd = Math.min(segment.startTime, endTime);
+                uncoveredRanges.push({
+                    start: currentTime,
+                    end: gapEnd
+                });
+            }
+            // Move past this segment
+            currentTime = Math.max(currentTime, segment.endTime);
+            // If we've covered the requested range, stop
+            if (currentTime >= endTime) {
+                break;
+            }
+        }
+        // If there's still uncovered time at the end
+        if (currentTime < endTime) {
+            uncoveredRanges.push({
+                start: currentTime,
+                end: endTime
+            });
+        }
+        return uncoveredRanges;
+    }
+    startProgressiveLoading() {
+        if (this.isProgressiveLoading || !this.buffer || !this.progressiveLoading)
+            return;
+        this.isProgressiveLoading = true;
+        this.nextProgressiveSegmentTime = 0; // Start from the beginning
+        // Start loading after a short delay to not interfere with user interactions
+        this.progressiveLoadTimeout = window.setTimeout(() => {
+            this.progressiveLoadNextSegment();
+        }, 1000); // Wait 1 second before starting
+    }
+    async progressiveLoadNextSegment() {
+        if (!this.buffer || !this.isProgressiveLoading)
+            return;
+        // For progressive loading, use fixed time-based segments (not pixel-based)
+        const segmentDuration = 30; // 30 seconds per segment for progressive loading
+        const totalDuration = this.buffer.duration;
+        // Check if we've reached the end
+        if (this.nextProgressiveSegmentTime >= totalDuration) {
+            this._stopProgressiveLoading();
+            return;
+        }
+        const segmentStart = this.nextProgressiveSegmentTime;
+        const segmentEnd = Math.min(segmentStart + segmentDuration, totalDuration);
+        console.log(`📊 Progressive segment calculation: start=${segmentStart.toFixed(2)}s, end=${segmentEnd.toFixed(2)}s, duration=${segmentDuration.toFixed(2)}s`);
+        // Check if this segment is already loaded
+        const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`;
+        const isAlreadyLoaded = this.segments.has(segmentKey);
+        if (!isAlreadyLoaded) {
+            try {
+                console.log(`🔄 Progressive loading segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`);
+                await this.generateSegments(segmentStart, segmentEnd);
+                console.log(`✅ Progressive loaded segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`);
+            }
+            catch (error) {
+                console.warn('Progressive loading failed:', error);
+                this._stopProgressiveLoading();
+                return;
+            }
+        }
+        else {
+            console.log(`⏭️ Progressive segment already loaded: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`);
+        }
+        // Move to next segment
+        this.nextProgressiveSegmentTime = segmentEnd;
+        // Schedule next progressive load
+        this.progressiveLoadTimeout = window.setTimeout(() => {
+            this.progressiveLoadNextSegment();
+        }, 2000); // Wait 2 seconds between segments
+    }
+    _stopProgressiveLoading() {
+        this.isProgressiveLoading = false;
+        if (this.progressiveLoadTimeout) {
+            clearTimeout(this.progressiveLoadTimeout);
+            this.progressiveLoadTimeout = null;
+        }
+    }
+    /** Get the current loading progress as a percentage (0-100) */
+    getLoadingProgress() {
+        if (!this.buffer)
+            return 0;
+        const totalDuration = this.buffer.duration;
+        if (totalDuration === 0)
+            return 100;
+        if (!this.isProgressiveLoading && this.segments.size === 0)
+            return 0;
+        // Calculate progress based on how far we've progressed through the audio
+        const progress = Math.min(100, (this.nextProgressiveSegmentTime / totalDuration) * 100);
+        // If progressive loading is complete, return 100%
+        if (!this.isProgressiveLoading && this.nextProgressiveSegmentTime >= totalDuration) {
+            return 100;
+        }
+        return progress;
+    }
+    emitProgress() {
+        const progress = this.getLoadingProgress() / 100; // Convert to 0-1 range
+        this.emit('progress', progress);
+    }
+    async calculateFrequencies(startTime, endTime) {
+        if (!this.buffer)
+            return [];
+        const calcStartTime = performance.now();
+        const sampleRate = this.buffer.sampleRate;
+        const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1;
+        // Try to use web worker first
+        if (this.worker) {
+            try {
+                const result = await this.calculateFrequenciesWithWorker(startTime, endTime);
+                const totalTime = performance.now() - calcStartTime;
+                return result;
+            }
+            catch (error) {
+                console.warn('Worker calculation failed, falling back to main thread:', error);
+                // Fall through to main thread calculation
+            }
+        }
+        // Fallback to main thread calculation
+        return this.calculateFrequenciesMainThread(startTime, endTime);
+    }
+    async calculateFrequenciesWithWorker(startTime, endTime) {
+        if (!this.buffer || !this.worker) {
+            throw new Error('Worker not available');
+        }
+        const sampleRate = this.buffer.sampleRate;
+        const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1;
+        // Calculate noverlap
+        let noverlap = this.noverlap;
+        if (!noverlap) {
+            const segmentDuration = endTime - startTime;
+            const pixelsPerSec = this.getPixelsPerSecond();
+            const segmentWidth = segmentDuration * pixelsPerSec;
+            const startSample = Math.floor(startTime * sampleRate);
+            const endSample = Math.floor(endTime * sampleRate);
+            const uniqueSamplesPerPx = (endSample - startSample) / segmentWidth;
+            noverlap = Math.max(0, Math.round(this.fftSamples - uniqueSamplesPerPx));
+        }
+        // Prepare audio data for worker
+        const audioData = [];
+        for (let c = 0; c < channels; c++) {
+            audioData.push(this.buffer.getChannelData(c));
+        }
+        // Generate unique ID for this request
+        const id = `${Date.now()}_${Math.random()}`;
+        // Create promise for worker response
+        const promise = new Promise((resolve, reject) => {
+            this.workerPromises.set(id, { resolve, reject });
+            // Set timeout to avoid hanging
+            setTimeout(() => {
+                if (this.workerPromises.has(id)) {
+                    this.workerPromises.delete(id);
+                    reject(new Error('Worker timeout'));
+                }
+            }, 30000); // 30 second timeout
+        });
+        // Send message to worker
+        this.worker.postMessage({
+            type: 'calculateFrequencies',
+            id,
+            audioData,
+            options: {
+                startTime,
+                endTime,
+                sampleRate,
+                fftSamples: this.fftSamples,
+                windowFunc: this.windowFunc,
+                alpha: this.alpha,
+                noverlap,
+                scale: this.scale,
+                gainDB: this.gainDB,
+                rangeDB: this.rangeDB,
+                splitChannels: this.options.splitChannels || false
+            }
+        });
+        return promise;
+    }
+    async calculateFrequenciesMainThread(startTime, endTime) {
+        if (!this.buffer)
+            return [];
+        const sampleRate = this.buffer.sampleRate;
+        const startSample = Math.floor(startTime * sampleRate);
+        const endSample = Math.floor(endTime * sampleRate);
+        const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1;
+        // Initialize FFT if needed
+        if (!this.fft) {
+            this.fft = new FFT(this.fftSamples, sampleRate, this.windowFunc, this.alpha);
+        }
+        // Calculate noverlap like the normal plugin
+        let noverlap = this.noverlap;
+        if (!noverlap) {
+            const segmentDuration = endTime - startTime;
+            const pixelsPerSec = this.getPixelsPerSecond();
+            const segmentWidth = segmentDuration * pixelsPerSec;
+            const uniqueSamplesPerPx = (endSample - startSample) / segmentWidth;
+            noverlap = Math.max(0, Math.round(this.fftSamples - uniqueSamplesPerPx));
+        }
+        // OPTIMIZATION: For windowed mode, reduce overlap to speed up processing
+        const maxOverlap = this.fftSamples * 0.5;
+        noverlap = Math.min(noverlap, maxOverlap);
+        const minHopSize = Math.max(64, this.fftSamples * 0.25);
+        const hopSize = Math.max(minHopSize, this.fftSamples - noverlap);
+        const frequencies = [];
+        const fftStartTime = performance.now();
+        let totalFFTs = 0;
+        for (let c = 0; c < channels; c++) {
+            const channelData = this.buffer.getChannelData(c);
+            const channelFreq = [];
+            for (let sample = startSample; sample + this.fftSamples < endSample; sample += hopSize) {
+                const segment = channelData.slice(sample, sample + this.fftSamples);
+                let spectrum = this.fft.calculateSpectrum(segment);
+                totalFFTs++;
+                // Apply filter bank if needed
+                const filterBank = this.getFilterBank(sampleRate);
+                if (filterBank) {
+                    spectrum = this.applyFilterBank(spectrum, filterBank);
+                }
+                // Convert to uint8 color indices
+                const freqBins = new Uint8Array(spectrum.length);
+                const gainPlusRange = this.gainDB + this.rangeDB;
+                for (let j = 0; j < spectrum.length; j++) {
+                    const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12;
+                    const valueDB = 20 * Math.log10(magnitude);
+                    if (valueDB < -gainPlusRange) {
+                        freqBins[j] = 0;
+                    }
+                    else if (valueDB > -this.gainDB) {
+                        freqBins[j] = 255;
+                    }
+                    else {
+                        freqBins[j] = Math.round(((valueDB + this.gainDB) / this.rangeDB) * 255);
+                    }
+                }
+                channelFreq.push(freqBins);
+            }
+            frequencies.push(channelFreq);
+        }
+        const fftEndTime = performance.now();
+        return frequencies;
+    }
+    async renderSegment(segment) {
+        const segmentWidth = segment.endPixel - segment.startPixel;
+        const totalHeight = this.height * segment.frequencies.length;
+        // Create canvas for this segment
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(segmentWidth);
+        canvas.height = Math.round(totalHeight);
+        canvas.style.position = 'absolute';
+        canvas.style.left = `${segment.startPixel}px`;
+        canvas.style.top = '0';
+        canvas.style.width = `${segmentWidth}px`;
+        canvas.style.height = `${totalHeight}px`;
+        const ctx = canvas.getContext('2d');
+        if (!ctx)
+            return;
+        // Get frequency scaling parameters like the normal plugin
+        const freqFrom = this.buffer?.sampleRate ? this.buffer.sampleRate / 2 : 0;
+        const freqMin = this.frequencyMin;
+        const freqMax = this.frequencyMax || freqFrom;
+        // Render frequency data to canvas with proper scaling
+        for (let c = 0; c < segment.frequencies.length; c++) {
+            await this.renderChannelToCanvas(segment.frequencies[c], ctx, segmentWidth, this.height, c * this.height, freqFrom, freqMin, freqMax);
+        }
+        // Add canvas to container
+        segment.canvas = canvas;
+        this.canvasContainer.appendChild(canvas);
+    }
+    async renderChannelToCanvas(channelFreq, ctx, width, height, yOffset, freqFrom, freqMin, freqMax) {
+        if (channelFreq.length === 0)
+            return;
+        const freqBins = channelFreq[0].length;
+        const imageData = new ImageData(channelFreq.length, freqBins);
+        const data = imageData.data;
+        // Fill image data
+        for (let i = 0; i < channelFreq.length; i++) {
+            const column = channelFreq[i];
+            for (let j = 0; j < freqBins; j++) {
+                const colorIndex = Math.min(255, Math.max(0, column[j]));
+                const color = this.colorMap[colorIndex];
+                const pixelIndex = ((freqBins - j - 1) * channelFreq.length + i) * 4;
+                data[pixelIndex] = color[0] * 255;
+                data[pixelIndex + 1] = color[1] * 255;
+                data[pixelIndex + 2] = color[2] * 255;
+                data[pixelIndex + 3] = color[3] * 255;
+            }
+        }
+        // Calculate frequency scaling like the normal plugin
+        const rMin = this.hzToScale(freqMin) / this.hzToScale(freqFrom);
+        const rMax = this.hzToScale(freqMax) / this.hzToScale(freqFrom);
+        const rMax1 = Math.min(1, rMax);
+        // Use the same frequency scaling approach as the regular spectrogram plugin
+        const drawHeight = (height * rMax1) / rMax;
+        const drawY = yOffset + height * (1 - rMax1 / rMax);
+        const bitmapSourceY = Math.round(freqBins * (1 - rMax1));
+        const bitmapSourceHeight = Math.round(freqBins * (rMax1 - rMin));
+        // Create and draw bitmap with proper frequency scaling
+        const bitmap = await createImageBitmap(imageData, 0, bitmapSourceY, channelFreq.length, bitmapSourceHeight);
+        ctx.drawImage(bitmap, 0, drawY, width, drawHeight);
+        // Clean up
+        if ('close' in bitmap) {
+            bitmap.close();
+        }
+    }
+    clearAllSegments() {
+        for (const segment of this.segments.values()) {
+            if (segment.canvas) {
+                segment.canvas.remove();
+            }
+        }
+        this.segments.clear();
+    }
+    getFilterBank(sampleRate) {
+        switch (this.scale) {
+            case 'mel':
+                return this.createFilterBank(this.numMelFilters, sampleRate, this.hzToMel, this.melToHz);
+            case 'logarithmic':
+                return this.createFilterBank(this.numLogFilters, sampleRate, this.hzToLog, this.logToHz);
+            case 'bark':
+                return this.createFilterBank(this.numBarkFilters, sampleRate, this.hzToBark, this.barkToHz);
+            case 'erb':
+                return this.createFilterBank(this.numErbFilters, sampleRate, this.hzToErb, this.erbToHz);
+            default:
+                return null;
+        }
+    }
+    // Frequency scaling methods (same as original)
+    hzToMel(hz) { return 2595 * Math.log10(1 + hz / 700); }
+    melToHz(mel) { return 700 * (Math.pow(10, mel / 2595) - 1); }
+    hzToLog(hz) { return Math.log10(Math.max(1, hz)); }
+    logToHz(log) { return Math.pow(10, log); }
+    hzToBark(hz) {
+        let bark = (26.81 * hz) / (1960 + hz) - 0.53;
+        if (bark < 2)
+            bark += 0.15 * (2 - bark);
+        if (bark > 20.1)
+            bark += 0.22 * (bark - 20.1);
+        return bark;
+    }
+    barkToHz(bark) {
+        if (bark < 2)
+            bark = (bark - 0.3) / 0.85;
+        if (bark > 20.1)
+            bark = (bark + 4.422) / 1.22;
+        return 1960 * ((bark + 0.53) / (26.28 - bark));
+    }
+    hzToErb(hz) { return ERB_A * Math.log10(1 + hz * 0.00437); }
+    erbToHz(erb) { return (Math.pow(10, erb / ERB_A) - 1) / 0.00437; }
+    createFilterBank(numFilters, sampleRate, hzToScale, scaleToHz) {
+        const filterMin = hzToScale(0);
+        const filterMax = hzToScale(sampleRate / 2);
+        const filterBank = Array.from({ length: numFilters }, () => Array(this.fftSamples / 2 + 1).fill(0));
+        const scale = sampleRate / this.fftSamples;
+        for (let i = 0; i < numFilters; i++) {
+            let hz = scaleToHz(filterMin + (i / numFilters) * (filterMax - filterMin));
+            let j = Math.floor(hz / scale);
+            let hzLow = j * scale;
+            let hzHigh = (j + 1) * scale;
+            let r = (hz - hzLow) / (hzHigh - hzLow);
+            filterBank[i][j] = 1 - r;
+            filterBank[i][j + 1] = r;
+        }
+        return filterBank;
+    }
+    applyFilterBank(fftPoints, filterBank) {
+        const numFilters = filterBank.length;
+        const logSpectrum = Float32Array.from({ length: numFilters }, () => 0);
+        for (let i = 0; i < numFilters; i++) {
+            for (let j = 0; j < fftPoints.length; j++) {
+                logSpectrum[i] += fftPoints[j] * filterBank[i][j];
+            }
+        }
+        return logSpectrum;
+    }
+    _onWrapperClick = (e) => {
+        const rect = this.wrapper.getBoundingClientRect();
+        const relativeX = e.clientX - rect.left;
+        const relativeWidth = rect.width;
+        const relativePosition = relativeX / relativeWidth;
+        this.emit('click', relativePosition);
+    };
+    freqType(freq) {
+        return freq >= 1000 ? (freq / 1000).toFixed(1) : Math.round(freq);
+    }
+    unitType(freq) {
+        return freq >= 1000 ? 'kHz' : 'Hz';
+    }
+    hzToScale(hz) {
+        switch (this.scale) {
+            case 'mel':
+                return this.hzToMel(hz);
+            case 'logarithmic':
+                return this.hzToLog(hz);
+            case 'bark':
+                return this.hzToBark(hz);
+            case 'erb':
+                return this.hzToErb(hz);
+        }
+        return hz;
+    }
+    scaleToHz(scale) {
+        switch (this.scale) {
+            case 'mel':
+                return this.melToHz(scale);
+            case 'logarithmic':
+                return this.logToHz(scale);
+            case 'bark':
+                return this.barkToHz(scale);
+            case 'erb':
+                return this.erbToHz(scale);
+        }
+        return scale;
+    }
+    getLabelFrequency(index, labelIndex) {
+        const scaleMin = this.hzToScale(this.frequencyMin);
+        const scaleMax = this.hzToScale(this.frequencyMax);
+        return this.scaleToHz(scaleMin + (index / labelIndex) * (scaleMax - scaleMin));
+    }
+    loadLabels(bgFill, fontSizeFreq, fontSizeUnit, fontType, textColorFreq, textColorUnit, textAlign, container, channels) {
+        const frequenciesHeight = this.height;
+        bgFill = bgFill || 'rgba(68,68,68,0)';
+        fontSizeFreq = fontSizeFreq || '12px';
+        fontSizeUnit = fontSizeUnit || '12px';
+        fontType = fontType || 'Helvetica';
+        textColorFreq = textColorFreq || '#fff';
+        textColorUnit = textColorUnit || '#fff';
+        textAlign = textAlign || 'center';
+        container = container || '#specLabels';
+        const bgWidth = 55;
+        const getMaxY = frequenciesHeight || 512;
+        const labelIndex = 5 * (getMaxY / 256);
+        const freqStart = this.frequencyMin;
+        const step = (this.frequencyMax - freqStart) / labelIndex;
+        // prepare canvas element for labels
+        const ctx = this.labelsEl.getContext('2d');
+        const dispScale = window.devicePixelRatio;
+        this.labelsEl.height = this.height * channels * dispScale;
+        this.labelsEl.width = bgWidth * dispScale;
+        ctx.scale(dispScale, dispScale);
+        if (!ctx) {
+            return;
+        }
+        for (let c = 0; c < channels; c++) {
+            // for each channel
+            // fill background
+            ctx.fillStyle = bgFill;
+            ctx.fillRect(0, c * getMaxY, bgWidth, (1 + c) * getMaxY);
+            ctx.fill();
+            let i;
+            // render labels
+            for (i = 0; i <= labelIndex; i++) {
+                ctx.textAlign = textAlign;
+                ctx.textBaseline = 'middle';
+                const freq = this.getLabelFrequency(i, labelIndex);
+                const label = this.freqType(freq);
+                const units = this.unitType(freq);
+                const x = 16;
+                let y = (1 + c) * getMaxY - (i / labelIndex) * getMaxY;
+                // Make sure label remains in view
+                y = Math.min(Math.max(y, c * getMaxY + 10), (1 + c) * getMaxY - 10);
+                // unit label
+                ctx.fillStyle = textColorUnit;
+                ctx.font = fontSizeUnit + ' ' + fontType;
+                ctx.fillText(units, x + 24, y);
+                // freq label
+                ctx.fillStyle = textColorFreq;
+                ctx.font = fontSizeFreq + ' ' + fontType;
+                ctx.fillText(label.toString(), x, y);
+            }
+        }
+    }
+    async render(audioData) {
+        this.buffer = audioData;
+        this.pixelsPerSecond = this.getPixelsPerSecond();
+        this.frequencyMax = this.frequencyMax || audioData.sampleRate / 2;
+        // Set wrapper height
+        const channels = this.options.splitChannels ? audioData.numberOfChannels : 1;
+        this.wrapper.style.height = this.height * channels + 'px';
+        // Clear existing data and reset progressive loading
+        this.clearAllSegments();
+        this.nextProgressiveSegmentTime = 0;
+        // Render frequency labels if enabled
+        if (this.options.labels) {
+            this.loadLabels(this.options.labelsBackground, '12px', '12px', '', this.options.labelsColor, this.options.labelsHzColor || this.options.labelsColor, 'center', '#specLabels', channels);
+        }
+        // Start initial render
+        this.scheduleRender();
+        this.emit('ready');
+    }
+    destroy() {
+        this.unAll();
+        if (this.renderTimeout) {
+            clearTimeout(this.renderTimeout);
+            this.renderTimeout = null;
+        }
+        if (this.qualityUpdateTimeout) {
+            clearTimeout(this.qualityUpdateTimeout);
+            this.qualityUpdateTimeout = null;
+        }
+        // Stop progressive loading
+        this.stopProgressiveLoading();
+        this.nextProgressiveSegmentTime = 0;
+        // Clean up worker
+        if (this.worker) {
+            this.worker.terminate();
+            this.worker = null;
+        }
+        // Clean up worker blob URL
+        if (this.workerBlobUrl) {
+            URL.revokeObjectURL(this.workerBlobUrl);
+            this.workerBlobUrl = null;
+        }
+        // Clear any pending worker promises
+        for (const [id, promise] of this.workerPromises) {
+            promise.reject(new Error('Plugin destroyed'));
+        }
+        this.workerPromises.clear();
+        this.clearAllSegments();
+        // Clean up DOM elements properly
+        if (this.canvasContainer) {
+            this.canvasContainer.remove();
+            this.canvasContainer = null;
+        }
+        if (this.wrapper) {
+            this.wrapper.remove();
+            this.wrapper = null;
+        }
+        if (this.labelsEl) {
+            this.labelsEl.remove();
+            this.labelsEl = null;
+        }
+        // Reset state for potential re-initialization
+        this.container = null;
+        this.buffer = null;
+        this.fft = null;
+        this.isRendering = false;
+        this.currentPosition = 0;
+        this.pixelsPerSecond = 0;
+        super.destroy();
+    }
+    // Add width calculation methods like the normal plugin
+    getWidth() {
+        return this.wavesurfer?.getWrapper()?.offsetWidth || 0;
+    }
+    getWrapperWidth() {
+        return this.wavesurfer?.getWrapper()?.clientWidth || 0;
+    }
+    getPixelsPerSecond() {
+        // Handle default case when no zoom is specified
+        const minPxPerSec = this.wavesurfer?.options.minPxPerSec;
+        if (minPxPerSec && minPxPerSec > 0) {
+            return minPxPerSec;
+        }
+        // For windowed mode, enforce a minimum zoom level so we never try to fit entire audio on screen
+        const WINDOWED_MIN_PX_PER_SEC = 50; // At least 50 pixels per second for windowed mode
+        // Fallback: calculate based on wrapper width and audio duration
+        if (this.buffer) {
+            const wrapperWidth = this.getWidth();
+            const calculatedPxPerSec = wrapperWidth > 0 ? wrapperWidth / this.buffer.duration : 100;
+            // For windowed mode, we want to show only a small portion of audio at a time
+            // Use the maximum of calculated value and our minimum to ensure reasonable zoom
+            const finalPxPerSec = Math.max(calculatedPxPerSec, WINDOWED_MIN_PX_PER_SEC);
+            return finalPxPerSec;
+        }
+        return WINDOWED_MIN_PX_PER_SEC;
+    }
+    /** Stop progressive loading if it's currently running */
+    stopProgressiveLoading() {
+        this.isProgressiveLoading = false;
+        if (this.progressiveLoadTimeout) {
+            clearTimeout(this.progressiveLoadTimeout);
+            this.progressiveLoadTimeout = null;
+        }
+    }
+    /** Restart progressive loading from the beginning */
+    restartProgressiveLoading() {
+        this.stopProgressiveLoading();
+        this.nextProgressiveSegmentTime = 0;
+        if (this.progressiveLoading) {
+            this.startProgressiveLoading();
+        }
+    }
+}
+export default WindowedSpectrogramPlugin;

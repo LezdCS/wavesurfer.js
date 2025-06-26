@@ -26,7 +26,7 @@ ws.registerPlugin(
     labelsBackground: 'rgba(0, 0, 0, 0.1)',
     colorMap: 'roseus', // Color scheme optimized for long audio viewing
     useWebWorker: true,
-    progressiveLoading: false,
+    progressiveLoading: true,
   }),
 )
 

@@ -123,6 +123,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   // Progressive loading
   private progressiveLoadTimeout: number | null = null
   private isProgressiveLoading = false
+  private nextProgressiveSegmentTime = 0 // Track which segment to load next
 
   // Web worker for FFT calculations
   private worker: Worker | null = null
@@ -939,21 +940,34 @@ function calculateFrequencies(audioChannels, options) {
     const containerWidth = this.getWidth() // Get full container width
     const totalAudioDuration = this.buffer.duration
 
+    // Progressive loading always uses fixed segment sizes, never fill container mode
+    const isProgressiveLoadCall = this.isProgressiveLoading && 
+      (endTime - startTime) <= 35 // Progressive loading uses ~30s segments
+
     // Calculate if this is a short audio that should fill the container
     const totalAudioPixelWidth = totalAudioDuration * pixelsPerSec
-    const shouldFillContainer = totalAudioPixelWidth <= containerWidth && totalAudioDuration <= 60 // 60s max for fill mode
+    const shouldFillContainer = !isProgressiveLoadCall && 
+      totalAudioPixelWidth <= containerWidth && 
+      totalAudioDuration <= 60 // 60s max for fill mode
 
     let segmentPixelWidth: number
     let segmentDuration: number
 
-    if (shouldFillContainer) {
+    if (isProgressiveLoadCall) {
+      // For progressive loading, respect the requested time range exactly
+      segmentDuration = endTime - startTime
+      segmentPixelWidth = segmentDuration * pixelsPerSec
+      console.log(`🔧 Progressive loading mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
+    } else if (shouldFillContainer) {
       // For short audio, create one segment that fills the entire container width
       segmentPixelWidth = containerWidth
       segmentDuration = totalAudioDuration // Use full audio duration
+      console.log(`🔧 Fill container mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
     } else {
-      // For long audio, use windowing approach
+      // For long audio viewport rendering, use windowing approach
       segmentPixelWidth = 15000 // 15000 pixels per segment
       segmentDuration = segmentPixelWidth / pixelsPerSec // Calculate duration based on pixel width
+      console.log(`🔧 Viewport rendering mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
     }
 
     
@@ -1063,67 +1077,57 @@ function calculateFrequencies(audioChannels, options) {
     if (this.isProgressiveLoading || !this.buffer || !this.progressiveLoading) return
     
     this.isProgressiveLoading = true
+    this.nextProgressiveSegmentTime = 0 // Start from the beginning
     
     // Start loading after a short delay to not interfere with user interactions
     this.progressiveLoadTimeout = window.setTimeout(() => {
       this.progressiveLoadNextSegment()
-    }, 1000) // Wait 1 second between segments
+    }, 1000) // Wait 1 second before starting
   }
 
   private async progressiveLoadNextSegment() {
     if (!this.buffer || !this.isProgressiveLoading) return
 
-    const pixelsPerSec = this.getPixelsPerSecond()
-    const segmentPixelWidth = 15000
-    const segmentDuration = segmentPixelWidth / pixelsPerSec
+    // For progressive loading, use fixed time-based segments (not pixel-based)
+    const segmentDuration = 30 // 30 seconds per segment for progressive loading
     const totalDuration = this.buffer.duration
 
-    // Find the next unloaded segment
-    let nextStartTime = 0
-    const loadedRanges: Array<{start: number, end: number}> = []
-    
-    // Collect all loaded ranges
-    for (const segment of this.segments.values()) {
-      loadedRanges.push({start: segment.startTime, end: segment.endTime})
-    }
-    
-    // Sort by start time
-    loadedRanges.sort((a, b) => a.start - b.start)
-    
-    // Find first gap or unloaded area
-    for (let time = 0; time < totalDuration; time += segmentDuration) {
-      const segmentEnd = Math.min(time + segmentDuration, totalDuration)
-      
-      // Check if this segment is already loaded
-      const isLoaded = loadedRanges.some(range => 
-        time >= range.start && segmentEnd <= range.end
-      )
-      
-      if (!isLoaded) {
-        nextStartTime = time
-        break
-      }
+    // Check if we've reached the end
+    if (this.nextProgressiveSegmentTime >= totalDuration) {
+      this._stopProgressiveLoading()
+      return
     }
 
-    // If we found an unloaded segment, load it
-    if (nextStartTime < totalDuration) {
-      const segmentEnd = Math.min(nextStartTime + segmentDuration, totalDuration)
-      
+    const segmentStart = this.nextProgressiveSegmentTime
+    const segmentEnd = Math.min(segmentStart + segmentDuration, totalDuration)
+    
+    console.log(`📊 Progressive segment calculation: start=${segmentStart.toFixed(2)}s, end=${segmentEnd.toFixed(2)}s, duration=${segmentDuration.toFixed(2)}s`)
+    
+    // Check if this segment is already loaded
+    const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`
+    const isAlreadyLoaded = this.segments.has(segmentKey)
+    
+    if (!isAlreadyLoaded) {
       try {
-        await this.generateSegments(nextStartTime, segmentEnd)
-        
-        // Schedule next progressive load
-        this.progressiveLoadTimeout = window.setTimeout(() => {
-          this.progressiveLoadNextSegment()
-        }, 5000) // Wait 5 seconds between segments
-        
-      } catch (error) {   
+        console.log(`🔄 Progressive loading segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
+        await this.generateSegments(segmentStart, segmentEnd)
+        console.log(`✅ Progressive loaded segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
+      } catch (error) {
+        console.warn('Progressive loading failed:', error)
         this._stopProgressiveLoading()
+        return
       }
     } else {
-      // All segments loaded
-      this._stopProgressiveLoading()
+      console.log(`⏭️ Progressive segment already loaded: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
     }
+    
+    // Move to next segment
+    this.nextProgressiveSegmentTime = segmentEnd
+    
+    // Schedule next progressive load
+    this.progressiveLoadTimeout = window.setTimeout(() => {
+      this.progressiveLoadNextSegment()
+    }, 2000) // Wait 2 seconds between segments
   }
 
   private _stopProgressiveLoading() {
@@ -1139,15 +1143,19 @@ function calculateFrequencies(audioChannels, options) {
     if (!this.buffer) return 0
     
     const totalDuration = this.buffer.duration
-    const pixelsPerSec = this.getPixelsPerSecond()
-    const segmentPixelWidth = 15000
-    const segmentDuration = segmentPixelWidth / pixelsPerSec
-    const totalSegments = Math.ceil(totalDuration / segmentDuration)
     
-    if (totalSegments === 0) return 100
+    if (totalDuration === 0) return 100
+    if (!this.isProgressiveLoading && this.segments.size === 0) return 0
     
-    const loadedSegments = this.segments.size
-    return Math.min(100, (loadedSegments / totalSegments) * 100)
+    // Calculate progress based on how far we've progressed through the audio
+    const progress = Math.min(100, (this.nextProgressiveSegmentTime / totalDuration) * 100)
+    
+    // If progressive loading is complete, return 100%
+    if (!this.isProgressiveLoading && this.nextProgressiveSegmentTime >= totalDuration) {
+      return 100
+    }
+    
+    return progress
   }
 
   private emitProgress() {
@@ -1625,8 +1633,9 @@ function calculateFrequencies(audioChannels, options) {
     const channels = this.options.splitChannels ? audioData.numberOfChannels : 1
     this.wrapper.style.height = this.height * channels + 'px'
 
-    // Clear existing data
+    // Clear existing data and reset progressive loading
     this.clearAllSegments()
+    this.nextProgressiveSegmentTime = 0
 
     // Render frequency labels if enabled
     if (this.options.labels) {
@@ -1663,6 +1672,7 @@ function calculateFrequencies(audioChannels, options) {
     
     // Stop progressive loading
     this.stopProgressiveLoading()
+    this.nextProgressiveSegmentTime = 0
     
     // Clean up worker
     if (this.worker) {
@@ -1749,6 +1759,15 @@ function calculateFrequencies(audioChannels, options) {
     if (this.progressiveLoadTimeout) {
       clearTimeout(this.progressiveLoadTimeout)
       this.progressiveLoadTimeout = null
+    }
+  }
+
+  /** Restart progressive loading from the beginning */
+  public restartProgressiveLoading() {
+    this.stopProgressiveLoading()
+    this.nextProgressiveSegmentTime = 0
+    if (this.progressiveLoading) {
+      this.startProgressiveLoading()
     }
   }
 }
