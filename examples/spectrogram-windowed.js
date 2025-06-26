@@ -22,7 +22,7 @@ ws.registerPlugin(
     scale: 'mel', // or 'linear', 'logarithmic', 'bark', 'erb'
     frequencyMax: 18000,
     frequencyMin: 0,
-    fftSamples: 2048, // Use a reasonable FFT size (powers of 2: 256, 512, 1024, 2048)
+    fftSamples: 1024, // Use a reasonable FFT size (powers of 2: 256, 512, 1024, 2048)
     labelsBackground: 'rgba(0, 0, 0, 0.1)',
     colorMap: 'roseus', // Color scheme optimized for long audio viewing
     useWebWorker: true,

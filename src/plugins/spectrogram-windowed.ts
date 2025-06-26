@@ -1577,7 +1577,6 @@ function calculateFrequencies(audioChannels, options) {
     const getMaxY = frequenciesHeight || 512
     const labelIndex = 5 * (getMaxY / 256)
     const freqStart = this.frequencyMin
-    const step = (this.frequencyMax - freqStart) / labelIndex
 
     // prepare canvas element for labels
     const ctx = this.labelsEl.getContext('2d')
@@ -1724,9 +1723,7 @@ function calculateFrequencies(audioChannels, options) {
     return this.wavesurfer?.getWrapper()?.offsetWidth || 0
   }
 
-  private getWrapperWidth() {
-    return this.wavesurfer?.getWrapper()?.clientWidth || 0
-  }
+
 
   private getPixelsPerSecond() {
     // Handle default case when no zoom is specified

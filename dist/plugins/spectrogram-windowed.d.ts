@@ -144,7 +144,6 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     render(audioData: AudioBuffer): Promise<void>;
     destroy(): void;
     private getWidth;
-    private getWrapperWidth;
     private getPixelsPerSecond;
     /** Stop progressive loading if it's currently running */
     stopProgressiveLoading(): void;
