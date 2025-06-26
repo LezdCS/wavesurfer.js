@@ -44,16 +44,6 @@ export default [
     plugins: [dts()],
   },
 
-  // Worker files
-  {
-    input: 'src/spectrogram-windowed.worker.ts',
-    output: {
-      file: 'dist/spectrogram-windowed.worker.js',
-      format: 'esm',
-    },
-    plugins: [typescript({ declaration: false, declarationDir: null })],
-  },
-
   // Wavesurfer plugins
   ...glob
     .sync('src/plugins/*.ts')
