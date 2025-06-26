@@ -1,21 +1,29 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 jest.mock('../renderer.js', () => {
     let lastInstance;
     class Renderer {
-        options;
-        wrapper = document.createElement('div');
-        renderProgress = jest.fn();
-        on = jest.fn(() => () => undefined);
-        setOptions = jest.fn();
-        getWrapper = jest.fn(() => this.wrapper);
-        getWidth = jest.fn(() => 100);
-        getScroll = jest.fn(() => 0);
-        setScroll = jest.fn();
-        setScrollPercentage = jest.fn();
-        render = jest.fn();
-        zoom = jest.fn();
-        exportImage = jest.fn(() => []);
-        destroy = jest.fn();
         constructor(options) {
+            this.wrapper = document.createElement('div');
+            this.renderProgress = jest.fn();
+            this.on = jest.fn(() => () => undefined);
+            this.setOptions = jest.fn();
+            this.getWrapper = jest.fn(() => this.wrapper);
+            this.getWidth = jest.fn(() => 100);
+            this.getScroll = jest.fn(() => 0);
+            this.setScroll = jest.fn();
+            this.setScrollPercentage = jest.fn();
+            this.render = jest.fn();
+            this.zoom = jest.fn();
+            this.exportImage = jest.fn(() => []);
+            this.destroy = jest.fn();
             this.options = options;
             lastInstance = this;
         }
@@ -25,10 +33,12 @@ jest.mock('../renderer.js', () => {
 jest.mock('../timer.js', () => {
     let lastInstance;
     class Timer {
-        on = jest.fn(() => () => undefined);
-        start = jest.fn();
-        stop = jest.fn();
-        destroy = jest.fn();
+        constructor() {
+            this.on = jest.fn(() => () => undefined);
+            this.start = jest.fn();
+            this.stop = jest.fn();
+            this.destroy = jest.fn();
+        }
     }
     const ctor = jest.fn(() => {
         lastInstance = new Timer();
@@ -59,7 +69,7 @@ const createMedia = () => {
 };
 const createWs = (opts = {}) => {
     const container = document.createElement('div');
-    return WaveSurfer.create({ container, media: createMedia(), ...opts });
+    return WaveSurfer.create(Object.assign({ container, media: createMedia() }, opts));
 };
 afterEach(() => {
     jest.clearAllMocks();
@@ -103,15 +113,15 @@ describe('WaveSurfer public methods', () => {
         ws.setScrollTime(5);
         expect(renderer.setScrollPercentage).toHaveBeenCalledWith(0.5);
     });
-    test('load and loadBlob call loadAudio', async () => {
+    test('load and loadBlob call loadAudio', () => __awaiter(void 0, void 0, void 0, function* () {
         const ws = createWs();
         const spy = jest.spyOn(ws, 'loadAudio').mockResolvedValue(undefined);
-        await ws.load('url');
+        yield ws.load('url');
         expect(spy).toHaveBeenCalledWith('url', undefined, undefined, undefined);
         const blob = new Blob([]);
-        await ws.loadBlob(blob);
+        yield ws.loadBlob(blob);
         expect(spy).toHaveBeenCalledWith('', blob, undefined, undefined);
-    });
+    }));
     test('zoom requires decoded data', () => {
         const ws = createWs();
         expect(() => ws.zoom(10)).toThrow();
@@ -161,22 +171,22 @@ describe('WaveSurfer public methods', () => {
         ws.seekTo(0.5);
         expect(setTimeSpy).toHaveBeenCalledWith(5);
     });
-    test('play sets start and end', async () => {
+    test('play sets start and end', () => __awaiter(void 0, void 0, void 0, function* () {
         const ws = createWs();
         const spy = jest.spyOn(ws, 'setTime');
-        await ws.play(2, 4);
+        yield ws.play(2, 4);
         expect(spy).toHaveBeenCalledWith(2);
         expect(ws.stopAtPosition).toBe(4);
-    });
-    test('playPause toggles play and pause', async () => {
+    }));
+    test('playPause toggles play and pause', () => __awaiter(void 0, void 0, void 0, function* () {
         const ws = createWs();
         const media = ws.getMediaElement();
-        await ws.playPause();
+        yield ws.playPause();
         expect(media.play).toHaveBeenCalled();
         Object.defineProperty(media, 'paused', { configurable: true, value: false });
-        await ws.playPause();
+        yield ws.playPause();
         expect(media.pause).toHaveBeenCalled();
-    });
+    }));
     test('stop resets time', () => {
         const ws = createWs();
         ws.setTime(5);
@@ -203,11 +213,11 @@ describe('WaveSurfer public methods', () => {
         expect(init).toHaveBeenCalled();
         expect(ws.getMediaElement()).toBe(el);
     });
-    test('exportImage uses renderer', async () => {
+    test('exportImage uses renderer', () => __awaiter(void 0, void 0, void 0, function* () {
         const ws = createWs();
-        await ws.exportImage('image/png', 1, 'dataURL');
+        yield ws.exportImage('image/png', 1, 'dataURL');
         expect(getRenderer().exportImage).toHaveBeenCalled();
-    });
+    }));
     test('destroy cleans up renderer and timer', () => {
         const ws = createWs();
         ws.destroy();

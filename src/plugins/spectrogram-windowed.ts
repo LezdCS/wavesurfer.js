@@ -160,8 +160,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Progressive loading (disabled by default to avoid system overload)
     this.progressiveLoading = options.progressiveLoading === true
 
-    // Web worker (enabled by default)
-    this.useWebWorker = options.useWebWorker !== false
+    // Web worker (disabled by default in SSR environments like Next.js)
+    this.useWebWorker = options.useWebWorker === true && typeof window !== 'undefined'
 
     // Filter banks
     this.numMelFilters = this.fftSamples / 2
@@ -179,9 +179,23 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 
   private initializeWorker() {
+    // Skip worker initialization in SSR environments (Next.js server-side)
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      console.warn('Worker not available in this environment, using main thread calculation')
+      return
+    }
+    
     try {
-      // Load worker from external file
-      this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url))
+      // Try Next.js compatible worker loading first
+      try {
+        this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url))
+      } catch (urlError) {
+        // Fallback for environments where import.meta.url doesn't work
+        console.warn('URL-based worker loading failed, trying alternative approach:', urlError)
+        // Don't try alternative patterns that might not work - just fall back to main thread
+        this.worker = null
+        return
+      }
       
       this.worker.onmessage = (e) => {
         const { type, id, result, error } = e.data
@@ -200,7 +214,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       }
       
       this.worker.onerror = (error) => {
-        console.error('Spectrogram worker error:', error)
+        console.warn('Spectrogram worker error, falling back to main thread:', error)
         // Fallback to main thread calculation
         this.worker = null
       }
