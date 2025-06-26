@@ -2,6 +2,7 @@ import { glob } from 'glob'
 import typescript from '@rollup/plugin-typescript'
 import terser from '@rollup/plugin-terser'
 import dts from 'rollup-plugin-dts'
+import resolve from '@rollup/plugin-node-resolve'
 
 const plugins = [typescript({ declaration: false, declarationDir: null }), terser({ format: { comments: false } })]
 
@@ -46,17 +47,22 @@ export default [
 
   // Worker files
   {
-    input: 'src/plugins/spectrogram-windowed.worker.js',
+    input: 'src/plugins/spectrogram-windowed.worker.ts',
     output: {
       file: 'dist/plugins/spectrogram-windowed.worker.js',
       format: 'iife',
     },
-    plugins: [terser({ format: { comments: false } })],
+    plugins: [
+      resolve(),
+      typescript({ declaration: false, declarationDir: null }),
+      terser({ format: { comments: false } })
+    ],
   },
 
   // Wavesurfer plugins
   ...glob
     .sync('src/plugins/*.ts')
+    .filter(plugin => !plugin.includes('.worker.ts'))
     .map((plugin) => [
       // ES module
       {

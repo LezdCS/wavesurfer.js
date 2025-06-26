@@ -1,12 +1,3 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 import Player from '../player.js';
 describe('Player', () => {
     const createMedia = () => {
@@ -16,14 +7,14 @@ describe('Player', () => {
         media.setSinkId = jest.fn().mockResolvedValue(undefined);
         return media;
     };
-    test('play and pause', () => __awaiter(void 0, void 0, void 0, function* () {
+    test('play and pause', async () => {
         const media = createMedia();
         const player = new Player({ media });
-        yield player.play();
+        await player.play();
         expect(media.play).toHaveBeenCalled();
         player.pause();
         expect(media.pause).toHaveBeenCalled();
-    }));
+    });
     test('volume and muted', () => {
         const media = createMedia();
         const player = new Player({ media });
@@ -41,10 +32,10 @@ describe('Player', () => {
         player.setTime(11);
         expect(player.getCurrentTime()).toBe(10);
     });
-    test('setSinkId uses media method', () => __awaiter(void 0, void 0, void 0, function* () {
+    test('setSinkId uses media method', async () => {
         const media = createMedia();
         const player = new Player({ media });
-        yield player.setSinkId('id');
+        await player.setSinkId('id');
         expect(media.setSinkId).toHaveBeenCalledWith('id');
-    }));
+    });
 });

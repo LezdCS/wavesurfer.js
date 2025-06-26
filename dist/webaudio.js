@@ -1,43 +1,34 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 import EventEmitter from './event-emitter.js';
 /**
  * A Web Audio buffer player emulating the behavior of an HTML5 Audio element.
  */
 class WebAudioPlayer extends EventEmitter {
+    audioContext;
+    gainNode;
+    bufferNode = null;
+    playStartTime = 0;
+    playedDuration = 0;
+    _muted = false;
+    _playbackRate = 1;
+    _duration = undefined;
+    buffer = null;
+    currentSrc = '';
+    paused = true;
+    crossOrigin = null;
+    seeking = false;
+    autoplay = false;
     constructor(audioContext = new AudioContext()) {
         super();
-        this.bufferNode = null;
-        this.playStartTime = 0;
-        this.playedDuration = 0;
-        this._muted = false;
-        this._playbackRate = 1;
-        this._duration = undefined;
-        this.buffer = null;
-        this.currentSrc = '';
-        this.paused = true;
-        this.crossOrigin = null;
-        this.seeking = false;
-        this.autoplay = false;
-        /** Subscribe to an event. Returns an unsubscribe function. */
-        this.addEventListener = this.on;
-        /** Unsubscribe from an event */
-        this.removeEventListener = this.un;
         this.audioContext = audioContext;
         this.gainNode = this.audioContext.createGain();
         this.gainNode.connect(this.audioContext.destination);
     }
-    load() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return;
-        });
+    /** Subscribe to an event. Returns an unsubscribe function. */
+    addEventListener = this.on;
+    /** Unsubscribe from an event */
+    removeEventListener = this.un;
+    async load() {
+        return;
     }
     get src() {
         return this.currentSrc;
@@ -73,11 +64,10 @@ class WebAudioPlayer extends EventEmitter {
         });
     }
     _play() {
-        var _a;
         if (!this.paused)
             return;
         this.paused = false;
-        (_a = this.bufferNode) === null || _a === void 0 ? void 0 : _a.disconnect();
+        this.bufferNode?.disconnect();
         this.bufferNode = this.audioContext.createBufferSource();
         if (this.buffer) {
             this.bufferNode.buffer = this.buffer;
@@ -99,18 +89,15 @@ class WebAudioPlayer extends EventEmitter {
         };
     }
     _pause() {
-        var _a;
         this.paused = true;
-        (_a = this.bufferNode) === null || _a === void 0 ? void 0 : _a.stop();
+        this.bufferNode?.stop();
         this.playedDuration += this.audioContext.currentTime - this.playStartTime;
     }
-    play() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this.paused)
-                return;
-            this._play();
-            this.emit('play');
-        });
+    async play() {
+        if (!this.paused)
+            return;
+        this._play();
+        this.emit('play');
     }
     pause() {
         if (this.paused)
@@ -121,19 +108,17 @@ class WebAudioPlayer extends EventEmitter {
     stopAt(timeSeconds) {
         const delay = timeSeconds - this.currentTime;
         const currentBufferNode = this.bufferNode;
-        currentBufferNode === null || currentBufferNode === void 0 ? void 0 : currentBufferNode.stop(this.audioContext.currentTime + delay);
-        currentBufferNode === null || currentBufferNode === void 0 ? void 0 : currentBufferNode.addEventListener('ended', () => {
+        currentBufferNode?.stop(this.audioContext.currentTime + delay);
+        currentBufferNode?.addEventListener('ended', () => {
             if (currentBufferNode === this.bufferNode) {
                 this.bufferNode = null;
                 this.pause();
             }
         }, { once: true });
     }
-    setSinkId(deviceId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const ac = this.audioContext;
-            return ac.setSinkId(deviceId);
-        });
+    async setSinkId(deviceId) {
+        const ac = this.audioContext;
+        return ac.setSinkId(deviceId);
     }
     get playbackRate() {
         return this._playbackRate;
@@ -159,8 +144,7 @@ class WebAudioPlayer extends EventEmitter {
         this.emit('timeupdate');
     }
     get duration() {
-        var _a, _b;
-        return (_a = this._duration) !== null && _a !== void 0 ? _a : (((_b = this.buffer) === null || _b === void 0 ? void 0 : _b.duration) || 0);
+        return this._duration ?? (this.buffer?.duration || 0);
     }
     set duration(value) {
         this._duration = value;

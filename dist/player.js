@@ -1,17 +1,9 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 import EventEmitter from './event-emitter.js';
 class Player extends EventEmitter {
+    media;
+    isExternalMedia = false;
     constructor(options) {
         super();
-        this.isExternalMedia = false;
         if (options.media) {
             this.media = options.media;
             this.isExternalMedia = true;
@@ -83,10 +75,8 @@ class Player extends EventEmitter {
         this.media = element;
     }
     /** Start playing the audio */
-    play() {
-        return __awaiter(this, void 0, void 0, function* () {
-            return this.media.play();
-        });
+    async play() {
+        return this.media.play();
     }
     /** Pause the audio */
     pause() {
