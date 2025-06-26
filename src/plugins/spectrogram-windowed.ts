@@ -172,13 +172,16 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.createWrapper()
     this.createCanvas()
     
-    // Initialize worker if enabled
+    // Initialize worker if enabled (async but non-blocking)
     if (this.useWebWorker) {
-      this.initializeWorker()
+      this.initializeWorker().catch(error => {
+        console.warn('Worker initialization failed:', error)
+        this.worker = null
+      })
     }
   }
 
-  private initializeWorker() {
+  private async initializeWorker() {
     // Skip worker initialization in SSR environments (Next.js server-side)
     if (typeof window === 'undefined' || typeof Worker === 'undefined') {
       console.warn('Worker not available in this environment, using main thread calculation')
@@ -186,47 +189,60 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
     
     try {
-      // Try multiple approaches for worker loading to support different environments
+      // Use completely dynamic worker loading strategies to avoid webpack static analysis
+      const workerStrategies = [
+        // Strategy 1: Try with dynamic URL construction (works in most modern environments)
+        async () => {
+          const base = '..'
+          const file = 'spectrogram-windowed'
+          const ext = '.worker.js'
+          const fullPath = base + '/' + file + ext
+          
+          if (typeof import.meta !== 'undefined' && import.meta.url) {
+            return new Worker(new URL(fullPath, import.meta.url), { type: 'module' })
+          }
+          throw new Error('import.meta.url not available')
+        },
+        
+        // Strategy 2: Try Next.js public folder approach
+        async () => {
+          const path = ['/', 'spectrogram-windowed', '.worker.js'].join('')
+          return new Worker(path, { type: 'module' })
+        },
+        
+        // Strategy 3: Try relative public path
+        async () => {
+          const path = ['./', 'spectrogram-windowed', '.worker.js'].join('')
+          return new Worker(path, { type: 'module' })
+        },
+        
+        // Strategy 4: Try without module type (legacy compatibility)
+        async () => {
+          const path = ['/', 'spectrogram-windowed', '.worker.js'].join('')
+          return new Worker(path)
+        },
+        
+        // Strategy 5: Try API route approach
+        async () => {
+          const apiPath = ['/api/worker/', 'spectrogram-windowed'].join('')
+          return new Worker(apiPath)
+        }
+      ]
       
-      // Method 1: Try URL-based loading (works in most modern environments)
-      try {
-        this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url), { type: 'module' })
-        this.setupWorkerListeners()
-        return
-      } catch (urlError) {
-        console.warn('URL-based worker loading failed:', urlError)
+      // Try each strategy until one works
+      for (let i = 0; i < workerStrategies.length; i++) {
+        try {
+          this.worker = await workerStrategies[i]()
+          this.setupWorkerListeners()
+          console.log(`Worker loaded successfully using strategy ${i + 1}`)
+          return
+        } catch (error) {
+          console.warn(`Worker loading strategy ${i + 1} failed:`, error)
+        }
       }
       
-      // Method 2: Try Next.js compatible approach with dynamic import
-      try {
-        // For Next.js, we need to provide a fallback URL that will work after build
-        this.worker = new Worker('/spectrogram-windowed.worker.js', { type: 'module' })
-        this.setupWorkerListeners()
-        return
-      } catch (nextError) {
-        console.warn('Next.js-style worker loading failed:', nextError)
-      }
-      
-      // Method 3: Try with absolute path for dist folder
-      try {
-        this.worker = new Worker('./spectrogram-windowed.worker.js', { type: 'module' })
-        this.setupWorkerListeners()
-        return
-      } catch (distError) {
-        console.warn('Dist folder worker loading failed:', distError)
-      }
-      
-      // Method 4: Try without module type for broader compatibility
-      try {
-        this.worker = new Worker('/spectrogram-windowed.worker.js')
-        this.setupWorkerListeners()
-        return
-      } catch (legacyError) {
-        console.warn('Legacy worker loading failed:', legacyError)
-      }
-      
-      // All methods failed, fall back to main thread
-      console.warn('All worker loading methods failed, falling back to main thread calculation')
+      // All strategies failed, fall back to main thread
+      console.warn('All worker loading strategies failed, falling back to main thread calculation')
       this.worker = null
       
     } catch (error) {
