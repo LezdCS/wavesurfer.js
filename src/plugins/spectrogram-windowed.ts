@@ -186,41 +186,77 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
     
     try {
-      // Try Next.js compatible worker loading first
+      // Try multiple approaches for worker loading to support different environments
+      
+      // Method 1: Try URL-based loading (works in most modern environments)
       try {
         this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url), { type: 'module' })
-      } catch (urlError) {
-        // Fallback for environments where import.meta.url doesn't work
-        console.warn('URL-based worker loading failed, trying alternative approach:', urlError)
-        // Don't try alternative patterns that might not work - just fall back to main thread
-        this.worker = null
+        this.setupWorkerListeners()
         return
+      } catch (urlError) {
+        console.warn('URL-based worker loading failed:', urlError)
       }
       
-      this.worker.onmessage = (e) => {
-        const { type, id, result, error } = e.data
-        
-        if (type === 'frequenciesResult') {
-          const promise = this.workerPromises.get(id)
-          if (promise) {
-            this.workerPromises.delete(id)
-            if (error) {
-              promise.reject(new Error(error))
-            } else {
-              promise.resolve(result)
-            }
-          }
-        }
+      // Method 2: Try Next.js compatible approach with dynamic import
+      try {
+        // For Next.js, we need to provide a fallback URL that will work after build
+        this.worker = new Worker('/spectrogram-windowed.worker.js', { type: 'module' })
+        this.setupWorkerListeners()
+        return
+      } catch (nextError) {
+        console.warn('Next.js-style worker loading failed:', nextError)
       }
       
-      this.worker.onerror = (error) => {
-        console.warn('Spectrogram worker error, falling back to main thread:', error)
-        // Fallback to main thread calculation
-        this.worker = null
+      // Method 3: Try with absolute path for dist folder
+      try {
+        this.worker = new Worker('./spectrogram-windowed.worker.js', { type: 'module' })
+        this.setupWorkerListeners()
+        return
+      } catch (distError) {
+        console.warn('Dist folder worker loading failed:', distError)
       }
+      
+      // Method 4: Try without module type for broader compatibility
+      try {
+        this.worker = new Worker('/spectrogram-windowed.worker.js')
+        this.setupWorkerListeners()
+        return
+      } catch (legacyError) {
+        console.warn('Legacy worker loading failed:', legacyError)
+      }
+      
+      // All methods failed, fall back to main thread
+      console.warn('All worker loading methods failed, falling back to main thread calculation')
+      this.worker = null
       
     } catch (error) {
       console.warn('Failed to initialize worker, falling back to main thread:', error)
+      this.worker = null
+    }
+  }
+
+  private setupWorkerListeners() {
+    if (!this.worker) return
+    
+    this.worker.onmessage = (e) => {
+      const { type, id, result, error } = e.data
+      
+      if (type === 'frequenciesResult') {
+        const promise = this.workerPromises.get(id)
+        if (promise) {
+          this.workerPromises.delete(id)
+          if (error) {
+            promise.reject(new Error(error))
+          } else {
+            promise.resolve(result)
+          }
+        }
+      }
+    }
+    
+    this.worker.onerror = (error) => {
+      console.warn('Spectrogram worker error, falling back to main thread:', error)
+      // Fallback to main thread calculation
       this.worker = null
     }
   }
