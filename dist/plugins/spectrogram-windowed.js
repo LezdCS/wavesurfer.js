@@ -90,7 +90,7 @@ class WindowedSpectrogramPlugin extends BasePlugin {
     initializeWorker() {
         try {
             // Load worker from external file
-            this.worker = new Worker(new URL('./spectrogram-windowed.worker.js', import.meta.url));
+            this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url));
             this.worker.onmessage = (e) => {
                 const { type, id, result, error } = e.data;
                 if (type === 'frequenciesResult') {

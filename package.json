@@ -71,7 +71,6 @@
   },
   "packageManager": "yarn@1.22.22",
   "devDependencies": {
-    "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^12.1.1",
     "@types/jest": "^29.5.2",
