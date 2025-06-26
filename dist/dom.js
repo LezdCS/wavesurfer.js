@@ -30,7 +30,7 @@ function renderNode(tagName, content) {
 }
 export function createElement(tagName, content, container) {
     const el = renderNode(tagName, content || {});
-    container?.appendChild(el);
+    container === null || container === void 0 ? void 0 : container.appendChild(el);
     return el;
 }
 export default createElement;

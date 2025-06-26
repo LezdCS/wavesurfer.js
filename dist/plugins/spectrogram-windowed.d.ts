@@ -145,7 +145,5 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private getPixelsPerSecond;
     /** Stop progressive loading if it's currently running */
     stopProgressiveLoading(): void;
-    /** Start progressive loading manually */
-    enableProgressiveLoading(): void;
 }
 export default WindowedSpectrogramPlugin;

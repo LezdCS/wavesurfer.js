@@ -25,7 +25,7 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 const rect = element.getBoundingClientRect();
                 const { left, top } = rect;
                 if (!isDragging) {
-                    onStart?.(startX - left, startY - top);
+                    onStart === null || onStart === void 0 ? void 0 : onStart(startX - left, startY - top);
                     isDragging = true;
                 }
                 onDrag(dx, dy, x - left, y - top);
@@ -39,7 +39,7 @@ export function makeDraggable(element, onDrag, onStart, onEnd, threshold = 3, mo
                 const y = event.clientY;
                 const rect = element.getBoundingClientRect();
                 const { left, top } = rect;
-                onEnd?.(x - left, y - top);
+                onEnd === null || onEnd === void 0 ? void 0 : onEnd(x - left, y - top);
             }
             unsubscribeDocument();
         };

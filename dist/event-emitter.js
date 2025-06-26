@@ -1,13 +1,15 @@
 /** A simple event emitter that can be used to listen to and emit events. */
 class EventEmitter {
-    listeners = {};
+    constructor() {
+        this.listeners = {};
+    }
     /** Subscribe to an event. Returns an unsubscribe function. */
     on(event, listener, options) {
         if (!this.listeners[event]) {
             this.listeners[event] = new Set();
         }
         this.listeners[event].add(listener);
-        if (options?.once) {
+        if (options === null || options === void 0 ? void 0 : options.once) {
             const unsubscribeOnce = () => {
                 this.un(event, unsubscribeOnce);
                 this.un(event, listener);
@@ -19,7 +21,8 @@ class EventEmitter {
     }
     /** Unsubscribe from an event */
     un(event, listener) {
-        this.listeners[event]?.delete(listener);
+        var _a;
+        (_a = this.listeners[event]) === null || _a === void 0 ? void 0 : _a.delete(listener);
     }
     /** Subscribe to an event only once */
     once(event, listener) {

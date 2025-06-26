@@ -1,26 +1,36 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
 import { makeDraggable } from './draggable.js';
 import EventEmitter from './event-emitter.js';
 class Renderer extends EventEmitter {
-    static MAX_CANVAS_WIDTH = 8000;
-    static MAX_NODES = 10;
-    options;
-    parent;
-    container;
-    scrollContainer;
-    wrapper;
-    canvasWrapper;
-    progressWrapper;
-    cursor;
-    timeouts = [];
-    isScrollable = false;
-    audioData = null;
-    resizeObserver = null;
-    lastContainerWidth = 0;
-    isDragging = false;
-    subscriptions = [];
-    unsubscribeOnScroll = [];
     constructor(options, audioElement) {
         super();
+        this.timeouts = [];
+        this.isScrollable = false;
+        this.audioData = null;
+        this.resizeObserver = null;
+        this.lastContainerWidth = 0;
+        this.isDragging = false;
+        this.subscriptions = [];
+        this.unsubscribeOnScroll = [];
         this.subscriptions = [];
         this.options = options;
         const parent = this.parentFromOptionsContainer(options.container);
@@ -117,15 +127,16 @@ class Renderer extends EventEmitter {
         }));
     }
     getHeight(optionsHeight, optionsSplitChannel) {
+        var _a;
         const defaultHeight = 128;
-        const numberOfChannels = this.audioData?.numberOfChannels || 1;
+        const numberOfChannels = ((_a = this.audioData) === null || _a === void 0 ? void 0 : _a.numberOfChannels) || 1;
         if (optionsHeight == null)
             return defaultHeight;
         if (!isNaN(Number(optionsHeight)))
             return Number(optionsHeight);
         if (optionsHeight === 'auto') {
             const height = this.parent.clientHeight || defaultHeight;
-            if (optionsSplitChannel?.every((channel) => !channel.overlay))
+            if (optionsSplitChannel === null || optionsSplitChannel === void 0 ? void 0 : optionsSplitChannel.every((channel) => !channel.overlay))
                 return height / numberOfChannels;
             return height;
         }
@@ -242,10 +253,11 @@ class Renderer extends EventEmitter {
         this.setScroll(scrollStart);
     }
     destroy() {
+        var _a, _b;
         this.subscriptions.forEach((unsubscribe) => unsubscribe());
         this.container.remove();
-        this.resizeObserver?.disconnect();
-        this.unsubscribeOnScroll?.forEach((unsubscribe) => unsubscribe());
+        (_a = this.resizeObserver) === null || _a === void 0 ? void 0 : _a.disconnect();
+        (_b = this.unsubscribeOnScroll) === null || _b === void 0 ? void 0 : _b.forEach((unsubscribe) => unsubscribe());
         this.unsubscribeOnScroll = [];
     }
     createDelay(delayMs = 10) {
@@ -491,7 +503,8 @@ class Renderer extends EventEmitter {
             this.unsubscribeOnScroll.push(unsubscribe);
         }
     }
-    renderChannel(channelData, { overlay, ...options }, width, channelIndex) {
+    renderChannel(channelData, _a, width, channelIndex) {
+        var { overlay } = _a, options = __rest(_a, ["overlay"]);
         // A container for canvases
         const canvasContainer = document.createElement('div');
         const height = this.getHeight(options.height, options.splitChannels);
@@ -507,53 +520,56 @@ class Renderer extends EventEmitter {
         // Render the waveform
         this.renderMultiCanvas(channelData, options, width, height, canvasContainer, progressContainer);
     }
-    async render(audioData) {
-        // Clear previous timeouts
-        this.timeouts.forEach((clear) => clear());
-        this.timeouts = [];
-        // Clear the canvases
-        this.canvasWrapper.innerHTML = '';
-        this.progressWrapper.innerHTML = '';
-        // Width
-        if (this.options.width != null) {
-            this.scrollContainer.style.width =
-                typeof this.options.width === 'number' ? `${this.options.width}px` : this.options.width;
-        }
-        // Determine the width of the waveform
-        const pixelRatio = this.getPixelRatio();
-        const parentWidth = this.scrollContainer.clientWidth;
-        const scrollWidth = Math.ceil(audioData.duration * (this.options.minPxPerSec || 0));
-        // Whether the container should scroll
-        this.isScrollable = scrollWidth > parentWidth;
-        const useParentWidth = this.options.fillParent && !this.isScrollable;
-        // Width of the waveform in pixels
-        const width = (useParentWidth ? parentWidth : scrollWidth) * pixelRatio;
-        // Set the width of the wrapper
-        this.wrapper.style.width = useParentWidth ? '100%' : `${scrollWidth}px`;
-        // Set additional styles
-        this.scrollContainer.style.overflowX = this.isScrollable ? 'auto' : 'hidden';
-        this.scrollContainer.classList.toggle('noScrollbar', !!this.options.hideScrollbar);
-        this.cursor.style.backgroundColor = `${this.options.cursorColor || this.options.progressColor}`;
-        this.cursor.style.width = `${this.options.cursorWidth}px`;
-        this.audioData = audioData;
-        this.emit('render');
-        // Render the waveform
-        if (this.options.splitChannels) {
-            // Render a waveform for each channel
-            for (let i = 0; i < audioData.numberOfChannels; i++) {
-                const options = { ...this.options, ...this.options.splitChannels?.[i] };
-                this.renderChannel([audioData.getChannelData(i)], options, width, i);
+    render(audioData) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            // Clear previous timeouts
+            this.timeouts.forEach((clear) => clear());
+            this.timeouts = [];
+            // Clear the canvases
+            this.canvasWrapper.innerHTML = '';
+            this.progressWrapper.innerHTML = '';
+            // Width
+            if (this.options.width != null) {
+                this.scrollContainer.style.width =
+                    typeof this.options.width === 'number' ? `${this.options.width}px` : this.options.width;
             }
-        }
-        else {
-            // Render a single waveform for the first two channels (left and right)
-            const channels = [audioData.getChannelData(0)];
-            if (audioData.numberOfChannels > 1)
-                channels.push(audioData.getChannelData(1));
-            this.renderChannel(channels, this.options, width, 0);
-        }
-        // Must be emitted asynchronously for backward compatibility
-        Promise.resolve().then(() => this.emit('rendered'));
+            // Determine the width of the waveform
+            const pixelRatio = this.getPixelRatio();
+            const parentWidth = this.scrollContainer.clientWidth;
+            const scrollWidth = Math.ceil(audioData.duration * (this.options.minPxPerSec || 0));
+            // Whether the container should scroll
+            this.isScrollable = scrollWidth > parentWidth;
+            const useParentWidth = this.options.fillParent && !this.isScrollable;
+            // Width of the waveform in pixels
+            const width = (useParentWidth ? parentWidth : scrollWidth) * pixelRatio;
+            // Set the width of the wrapper
+            this.wrapper.style.width = useParentWidth ? '100%' : `${scrollWidth}px`;
+            // Set additional styles
+            this.scrollContainer.style.overflowX = this.isScrollable ? 'auto' : 'hidden';
+            this.scrollContainer.classList.toggle('noScrollbar', !!this.options.hideScrollbar);
+            this.cursor.style.backgroundColor = `${this.options.cursorColor || this.options.progressColor}`;
+            this.cursor.style.width = `${this.options.cursorWidth}px`;
+            this.audioData = audioData;
+            this.emit('render');
+            // Render the waveform
+            if (this.options.splitChannels) {
+                // Render a waveform for each channel
+                for (let i = 0; i < audioData.numberOfChannels; i++) {
+                    const options = Object.assign(Object.assign({}, this.options), (_a = this.options.splitChannels) === null || _a === void 0 ? void 0 : _a[i]);
+                    this.renderChannel([audioData.getChannelData(i)], options, width, i);
+                }
+            }
+            else {
+                // Render a single waveform for the first two channels (left and right)
+                const channels = [audioData.getChannelData(0)];
+                if (audioData.numberOfChannels > 1)
+                    channels.push(audioData.getChannelData(1));
+                this.renderChannel(channels, this.options, width, 0);
+            }
+            // Must be emitted asynchronously for backward compatibility
+            Promise.resolve().then(() => this.emit('rendered'));
+        });
     }
     reRender() {
         this.unsubscribeOnScroll.forEach((unsubscribe) => unsubscribe());
@@ -628,24 +644,28 @@ class Renderer extends EventEmitter {
             this.scrollIntoView(progress, isPlaying);
         }
     }
-    async exportImage(format, quality, type) {
-        const canvases = this.canvasWrapper.querySelectorAll('canvas');
-        if (!canvases.length) {
-            throw new Error('No waveform data');
-        }
-        // Data URLs
-        if (type === 'dataURL') {
-            const images = Array.from(canvases).map((canvas) => canvas.toDataURL(format, quality));
-            return Promise.resolve(images);
-        }
-        // Blobs
-        return Promise.all(Array.from(canvases).map((canvas) => {
-            return new Promise((resolve, reject) => {
-                canvas.toBlob((blob) => {
-                    blob ? resolve(blob) : reject(new Error('Could not export image'));
-                }, format, quality);
-            });
-        }));
+    exportImage(format, quality, type) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const canvases = this.canvasWrapper.querySelectorAll('canvas');
+            if (!canvases.length) {
+                throw new Error('No waveform data');
+            }
+            // Data URLs
+            if (type === 'dataURL') {
+                const images = Array.from(canvases).map((canvas) => canvas.toDataURL(format, quality));
+                return Promise.resolve(images);
+            }
+            // Blobs
+            return Promise.all(Array.from(canvases).map((canvas) => {
+                return new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => {
+                        blob ? resolve(blob) : reject(new Error('Could not export image'));
+                    }, format, quality);
+                });
+            }));
+        });
     }
 }
+Renderer.MAX_CANVAS_WIDTH = 8000;
+Renderer.MAX_NODES = 10;
 export default Renderer;

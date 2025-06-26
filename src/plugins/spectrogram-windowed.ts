@@ -205,7 +205,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         this.worker = null
       }
       
-      console.log('🔧 Spectrogram worker initialized from external file')
     } catch (error) {
       console.warn('Failed to initialize worker, falling back to main thread:', error)
       this.worker = null
@@ -357,7 +356,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     
     // Only update canvas positions if zoom changed, keep frequency data!
     if (oldPixelsPerSecond !== this.pixelsPerSecond && this.segments.size > 0) {
-      console.log(`🔄 Zoom changed: ${oldPixelsPerSecond.toFixed(1)} → ${this.pixelsPerSecond.toFixed(1)} px/s`)
       this.updateSegmentPositions(oldPixelsPerSecond, this.pixelsPerSecond)
     }
     
@@ -365,7 +363,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 
   private updateSegmentPositions(oldPxPerSec: number, newPxPerSec: number) {
-    console.log(`📐 Updating ${this.segments.size} segment positions without recalculating frequencies`)
     
     for (const segment of this.segments.values()) {
       // Update pixel positions based on new zoom level
@@ -383,7 +380,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Schedule a gentle re-render of visible segments only if zoom changed significantly
     const zoomRatio = newPxPerSec / oldPxPerSec
     if (zoomRatio < 0.5 || zoomRatio > 2.0) {
-      console.log(`📐 Significant zoom change (${zoomRatio.toFixed(2)}x), will re-render visible segments`)
       this.scheduleSegmentQualityUpdate()
     }
   }
@@ -415,7 +411,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const visibleStartTime = scrollLeft / pixelsPerSec
     const visibleEndTime = (scrollLeft + viewportWidth) / pixelsPerSec
     
-    console.log(`🔧 Updating quality for visible segments: ${visibleStartTime.toFixed(1)}s - ${visibleEndTime.toFixed(1)}s`)
     
     // Find segments that overlap with visible area
     const visibleSegments = Array.from(this.segments.values()).filter(segment => 
@@ -423,21 +418,17 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     )
     
     if (visibleSegments.length === 0) {
-      console.log(`  - No visible segments to update`)
       return
     }
     
-    console.log(`  - Found ${visibleSegments.length} visible segments to update`)
     
     // Re-render only the visible segments with current zoom level
     for (const segment of visibleSegments) {
       if (segment.canvas) {
-        console.log(`  - Re-rendering segment ${segment.startTime.toFixed(1)}s - ${segment.endTime.toFixed(1)}s`)
         await this.renderSegment(segment)
       }
     }
     
-    console.log(`✅ Quality update complete for ${visibleSegments.length} segments`)
   }
 
   private getScrollLeft(wrapper: HTMLElement): number {
@@ -504,12 +495,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const pixelsPerSec = this.getPixelsPerSecond()
     const currentViewTime = scrollLeft / pixelsPerSec
     
-    console.log(`🌊 Scroll event detected:`)
-    console.log(`  - Scroll position: ${scrollLeft}px`)
-    console.log(`  - Current view time: ${currentViewTime.toFixed(1)}s`)
-    console.log(`  - Pixels per second: ${pixelsPerSec}`)
-    console.log(`  - Scheduling render...`)
-    
     this.scheduleRender()
   }
 
@@ -541,17 +526,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       const pixelsPerSec = this.getPixelsPerSecond()
       const totalAudioDuration = this.buffer.duration
 
-      console.log(`📊 Debug windowed render:`)
-      console.log(`  - Scroll left: ${scrollLeft}px`)
-      console.log(`  - Viewport width: ${actualViewportWidth}px`)
-      console.log(`  - Pixels per second: ${pixelsPerSec}`)
-      console.log(`  - Total audio duration: ${totalAudioDuration.toFixed(1)}s`)
-
       const visibleStartTime = scrollLeft / pixelsPerSec
       const visibleEndTime = (scrollLeft + actualViewportWidth) / pixelsPerSec
-
-      console.log(`  - Visible time range: ${visibleStartTime.toFixed(1)}s - ${visibleEndTime.toFixed(1)}s`)
-      console.log(`  - Visible duration: ${(visibleEndTime - visibleStartTime).toFixed(1)}s`)
 
       // Reasonable buffer time based on visible duration
       const visibleDuration = visibleEndTime - visibleStartTime
@@ -564,8 +540,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
       const windowStartTime = Math.max(0, visibleStartTime - bufferTimeSeconds)
       const windowEndTime = Math.min(this.buffer.duration, visibleEndTime + bufferTimeSeconds)
-
-      console.log(`🎯 Render window: ${windowStartTime.toFixed(1)}s - ${windowEndTime.toFixed(1)}s (${(windowEndTime - windowStartTime).toFixed(1)}s total, buffer: ${bufferTimeSeconds.toFixed(1)}s)`)
 
       // Generate segments for this window
       await this.generateSegments(windowStartTime, windowEndTime)
@@ -595,23 +569,16 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       // For short audio, create one segment that fills the entire container width
       segmentPixelWidth = containerWidth
       segmentDuration = totalAudioDuration // Use full audio duration
-      console.log(`🎯 Short audio mode: filling container width ${containerWidth}px with ${totalAudioDuration.toFixed(1)}s audio`)
     } else {
       // For long audio, use windowing approach
       segmentPixelWidth = 15000 // 15000 pixels per segment
       segmentDuration = segmentPixelWidth / pixelsPerSec // Calculate duration based on pixel width
-      console.log(`🌊 Windowed mode: ${segmentPixelWidth}px segments = ${segmentDuration.toFixed(1)}s per segment`)
     }
 
-    console.log(`🔧 Generating segments for ${startTime.toFixed(1)}s - ${endTime.toFixed(1)}s`)
-    console.log(`   - Segment size: ${segmentPixelWidth}px = ${segmentDuration.toFixed(1)}s per segment`)
-    console.log(`   - Current segments count: ${this.segments.size}`)
     
     // Show existing segments
     if (this.segments.size > 0) {
-      console.log(`   - Existing segments:`)
       for (const [key, segment] of this.segments) {
-        console.log(`     * ${key}: ${segment.startTime.toFixed(1)}s - ${segment.endTime.toFixed(1)}s`)
       }
     }
 
@@ -619,13 +586,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const uncoveredRanges = this.findUncoveredTimeRanges(startTime, endTime, segmentDuration)
     
     if (uncoveredRanges.length === 0) {
-      console.log(`   - ✅ Time range ${startTime.toFixed(1)}s - ${endTime.toFixed(1)}s is already fully covered`)
       return
-    }
-
-    console.log(`   - Found ${uncoveredRanges.length} uncovered ranges:`)
-    for (const range of uncoveredRanges) {
-      console.log(`     * ${range.start.toFixed(1)}s - ${range.end.toFixed(1)}s`)
     }
 
     let newSegmentsCreated = 0
@@ -640,18 +601,15 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
         // Double-check if segment already exists (shouldn't happen but be safe)
         if (this.segments.has(segmentKey)) {
-          console.log(`   - Segment ${segmentKey} unexpectedly exists, skipping`)
           continue
         }
 
-        console.log(`   - Creating new segment: ${segmentKey} (${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s, ${segmentDuration.toFixed(1)}s duration)`)
         newSegmentsCreated++
 
         // Calculate frequency data for this segment
         const freqStartTime = performance.now()
         const frequencies = await this.calculateFrequencies(segmentStart, segmentEnd)
         const freqEndTime = performance.now()
-        console.log(`   - ⏱️ FFT calculation took: ${(freqEndTime - freqStartTime).toFixed(1)}ms`)
         
         if (frequencies && frequencies.length > 0) {
           const segment: FrequencySegment = {
@@ -668,23 +626,12 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
           const renderStartTime = performance.now()
           await this.renderSegment(segment)
           const renderEndTime = performance.now()
-          console.log(`   - ⏱️ Canvas rendering took: ${(renderEndTime - renderStartTime).toFixed(1)}ms`)
-          console.log(`   - ✅ Segment ${segmentKey} rendered successfully (Total: ${(renderEndTime - freqStartTime).toFixed(1)}ms)`)
           
           // Emit progress update
           this.emitProgress()
         } else {
-          console.log(`   - ❌ Failed to generate frequencies for segment ${segmentKey}`)
         }
       }
-    }
-
-    console.log(`🔧 Segment generation complete: ${newSegmentsCreated} new segments created, ${this.segments.size} total`)
-    
-    // Show final segments list
-    console.log(`   - Final segments:`)
-    for (const [key, segment] of this.segments) {
-      console.log(`     * ${key}: ${segment.startTime.toFixed(1)}s - ${segment.endTime.toFixed(1)}s`)
     }
 
     // Start progressive loading if not already running
@@ -735,7 +682,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     if (this.isProgressiveLoading || !this.buffer || !this.progressiveLoading) return
     
     this.isProgressiveLoading = true
-    console.log(`🔄 Starting progressive background loading...`)
     
     // Start loading after a short delay to not interfere with user interactions
     this.progressiveLoadTimeout = window.setTimeout(() => {
@@ -782,8 +728,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     if (nextStartTime < totalDuration) {
       const segmentEnd = Math.min(nextStartTime + segmentDuration, totalDuration)
       
-      console.log(`🔄 Progressive loading: ${nextStartTime.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
-      
       try {
         await this.generateSegments(nextStartTime, segmentEnd)
         
@@ -792,13 +736,11 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
           this.progressiveLoadNextSegment()
         }, 5000) // Wait 5 seconds between segments
         
-      } catch (error) {
-        console.error('Progressive loading error:', error)
+      } catch (error) {   
         this._stopProgressiveLoading()
       }
     } else {
       // All segments loaded
-      console.log(`✅ Progressive loading complete! All ${this.segments.size} segments loaded.`)
       this._stopProgressiveLoading()
     }
   }
@@ -842,10 +784,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Try to use web worker first
     if (this.worker) {
       try {
-        console.log(`     - 🔧 Using web worker for FFT calculations`)
         const result = await this.calculateFrequenciesWithWorker(startTime, endTime)
         const totalTime = performance.now() - calcStartTime
-        console.log(`     - ⏱️ Worker calculation completed in: ${totalTime.toFixed(1)}ms`)
         return result
       } catch (error) {
         console.warn('Worker calculation failed, falling back to main thread:', error)
@@ -854,7 +794,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
 
     // Fallback to main thread calculation
-    console.log(`     - 🔧 Using main thread for FFT calculations`)
     return this.calculateFrequenciesMainThread(startTime, endTime)
   }
 
@@ -954,9 +893,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     const frequencies: Uint8Array[][] = []
     
-    console.log(`     - Processing ${(endTime - startTime).toFixed(1)}s segment (${endSample - startSample} samples)`)
-    console.log(`     - FFT size: ${this.fftSamples}, hop size: ${hopSize}, channels: ${channels}`)
-
     const fftStartTime = performance.now()
     let totalFFTs = 0
 
@@ -997,7 +933,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
 
     const fftEndTime = performance.now()
-    console.log(`     - ⏱️ Main thread processed ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`)
 
     return frequencies
   }
@@ -1400,7 +1335,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Handle default case when no zoom is specified
     const minPxPerSec = this.wavesurfer?.options.minPxPerSec
     if (minPxPerSec && minPxPerSec > 0) {
-      console.log(`  📏 Using minPxPerSec: ${minPxPerSec}`)
       return minPxPerSec
     }
     
@@ -1416,39 +1350,19 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       // Use the maximum of calculated value and our minimum to ensure reasonable zoom
       const finalPxPerSec = Math.max(calculatedPxPerSec, WINDOWED_MIN_PX_PER_SEC)
       
-      console.log(`  📏 Calculated pxPerSec: ${calculatedPxPerSec.toFixed(2)} (width: ${wrapperWidth}px, duration: ${this.buffer.duration.toFixed(1)}s)`)
-      console.log(`  📏 Enforced minimum: ${WINDOWED_MIN_PX_PER_SEC}, final: ${finalPxPerSec.toFixed(2)}`)
-      console.log(`  📏 This means ${(wrapperWidth / finalPxPerSec).toFixed(1)}s of audio will be visible on screen`)
-      
       return finalPxPerSec
     }
     
-    console.log(`  📏 Using default fallback: ${WINDOWED_MIN_PX_PER_SEC}`)
     return WINDOWED_MIN_PX_PER_SEC
   }
 
   /** Stop progressive loading if it's currently running */
   public stopProgressiveLoading() {
-    console.log('🛑 Progressive loading stopped by user')
     this.isProgressiveLoading = false
     if (this.progressiveLoadTimeout) {
       clearTimeout(this.progressiveLoadTimeout)
       this.progressiveLoadTimeout = null
     }
-  }
-
-  /** Start progressive loading manually */
-  public enableProgressiveLoading() {
-    if (!this.progressiveLoading) {
-      console.log('⚠️ Progressive loading is disabled in options')
-      return
-    }
-    if (this.isProgressiveLoading) {
-      console.log('⚠️ Progressive loading is already running')
-      return
-    }
-    console.log('▶️ Progressive loading started manually')
-    this.startProgressiveLoading()
   }
 }
 
