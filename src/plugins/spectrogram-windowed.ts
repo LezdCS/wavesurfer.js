@@ -188,7 +188,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     try {
       // Try Next.js compatible worker loading first
       try {
-        this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url))
+        this.worker = new Worker(new URL('../spectrogram-windowed.worker.js', import.meta.url), { type: 'module' })
       } catch (urlError) {
         // Fallback for environments where import.meta.url doesn't work
         console.warn('URL-based worker loading failed, trying alternative approach:', urlError)

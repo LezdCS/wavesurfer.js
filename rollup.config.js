@@ -49,7 +49,7 @@ export default [
     input: 'src/spectrogram-windowed.worker.ts',
     output: {
       file: 'dist/spectrogram-windowed.worker.js',
-      format: 'iife',
+      format: 'esm',
     },
     plugins: [typescript({ declaration: false, declarationDir: null })],
   },
