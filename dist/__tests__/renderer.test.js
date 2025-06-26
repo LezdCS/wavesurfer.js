@@ -1,12 +1,3 @@
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
 import Renderer from '../renderer.js';
 const createAudioBuffer = (channels, duration = 1) => {
     return {
@@ -78,16 +69,16 @@ describe('Renderer', () => {
         container.style.height = '200px';
         expect(renderer.getHeight('auto', [{ overlay: false }])).toBe(64);
     });
-    test('createDelay resolves after time', () => __awaiter(void 0, void 0, void 0, function* () {
+    test('createDelay resolves after time', async () => {
         jest.useFakeTimers();
         const delay = renderer.createDelay(10);
         const spy = jest.fn();
         const p = delay().then(spy);
         jest.advanceTimersByTime(10);
-        yield p;
+        await p;
         expect(spy).toHaveBeenCalled();
         jest.useRealTimers();
-    }));
+    });
     test('convertColorValues supports gradients', () => {
         const result = renderer.convertColorValues(['red', 'blue']);
         expect(typeof result).toBe('object');
@@ -136,20 +127,20 @@ describe('Renderer', () => {
         renderer.renderChannel(data, {}, 10, 0);
         expect(renderer.canvasWrapper.children.length).toBeGreaterThan(0);
     });
-    test('render processes audio buffer', () => __awaiter(void 0, void 0, void 0, function* () {
+    test('render processes audio buffer', async () => {
         const buffer = createAudioBuffer([[0, 0.5, -0.5]]);
         const spy = jest.fn();
         renderer.on('render', spy);
-        yield renderer.render(buffer);
+        await renderer.render(buffer);
         expect(spy).toHaveBeenCalled();
-    }));
-    test('reRender keeps scroll position', () => __awaiter(void 0, void 0, void 0, function* () {
+    });
+    test('reRender keeps scroll position', async () => {
         const buffer = createAudioBuffer([[0, 0.5, -0.5]]);
-        yield renderer.render(buffer);
+        await renderer.render(buffer);
         renderer.setScroll(10);
         renderer.reRender();
         expect(renderer.getScroll()).toBe(10);
-    }));
+    });
     test('zoom updates option', () => {
         renderer.zoom(20);
         expect(renderer.options.minPxPerSec).toBe(20);
@@ -165,14 +156,14 @@ describe('Renderer', () => {
         renderer.renderProgress(0.5);
         expect(renderer.progressWrapper.style.width).toBe('50%');
     });
-    test('exportImage returns data', () => __awaiter(void 0, void 0, void 0, function* () {
+    test('exportImage returns data', async () => {
         const canvas = document.createElement('canvas');
         renderer.canvasWrapper.appendChild(canvas);
-        const urls = yield renderer.exportImage('image/png', 1, 'dataURL');
+        const urls = await renderer.exportImage('image/png', 1, 'dataURL');
         expect(urls).toHaveLength(1);
-        const blobs = yield renderer.exportImage('image/png', 1, 'blob');
+        const blobs = await renderer.exportImage('image/png', 1, 'blob');
         expect(blobs).toHaveLength(1);
-    }));
+    });
     test('destroy cleans up', () => {
         renderer.destroy();
         expect(container.contains(renderer.getWrapper())).toBe(false);

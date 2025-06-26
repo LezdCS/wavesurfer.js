@@ -1,9 +1,6 @@
 import EventEmitter from './event-emitter.js';
 class Timer extends EventEmitter {
-    constructor() {
-        super(...arguments);
-        this.unsubscribe = () => undefined;
-    }
+    unsubscribe = () => undefined;
     start() {
         this.unsubscribe = this.on('tick', () => {
             requestAnimationFrame(() => {

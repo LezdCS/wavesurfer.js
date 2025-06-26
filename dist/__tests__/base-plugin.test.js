@@ -1,9 +1,6 @@
 import { BasePlugin } from '../base-plugin.js';
 class TestPlugin extends BasePlugin {
-    constructor() {
-        super(...arguments);
-        this.initCalled = false;
-    }
+    initCalled = false;
     onInit() {
         this.initCalled = true;
     }

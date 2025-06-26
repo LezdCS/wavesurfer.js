@@ -1,1 +1,355 @@
-class t{constructor(){this.listeners={}}on(t,e,i){if(this.listeners[t]||(this.listeners[t]=new Set),this.listeners[t].add(e),null==i?void 0:i.once){const i=()=>{this.un(t,i),this.un(t,e)};return this.on(t,i),i}return()=>this.un(t,e)}un(t,e){var i;null===(i=this.listeners[t])||void 0===i||i.delete(e)}once(t,e){return this.on(t,e,{once:!0})}unAll(){this.listeners={}}emit(t,...e){this.listeners[t]&&this.listeners[t].forEach((t=>t(...e)))}}class e extends t{constructor(t){super(),this.subscriptions=[],this.isDestroyed=!1,this.options=t}onInit(){}_init(t){this.isDestroyed&&(this.subscriptions=[],this.isDestroyed=!1),this.wavesurfer=t,this.onInit()}destroy(){this.emit("destroy"),this.subscriptions.forEach((t=>t())),this.subscriptions=[],this.isDestroyed=!0,this.wavesurfer=void 0}}function i(t,e,i,o,n=3,s=0,r=100){if(!t)return()=>{};const l=matchMedia("(pointer: coarse)").matches;let h=()=>{};const a=a=>{if(a.button!==s)return;a.preventDefault(),a.stopPropagation();let u=a.clientX,c=a.clientY,d=!1;const p=Date.now(),m=o=>{if(o.preventDefault(),o.stopPropagation(),l&&Date.now()-p<r)return;const s=o.clientX,h=o.clientY,a=s-u,m=h-c;if(d||Math.abs(a)>n||Math.abs(m)>n){const o=t.getBoundingClientRect(),{left:n,top:r}=o;d||(null==i||i(u-n,c-r),d=!0),e(a,m,s-n,h-r),u=s,c=h}},v=e=>{if(d){const i=e.clientX,n=e.clientY,s=t.getBoundingClientRect(),{left:r,top:l}=s;null==o||o(i-r,n-l)}h()},g=t=>{t.relatedTarget&&t.relatedTarget!==document.documentElement||v(t)},f=t=>{d&&(t.stopPropagation(),t.preventDefault())},y=t=>{d&&t.preventDefault()};document.addEventListener("pointermove",m),document.addEventListener("pointerup",v),document.addEventListener("pointerout",g),document.addEventListener("pointercancel",g),document.addEventListener("touchmove",y,{passive:!1}),document.addEventListener("click",f,{capture:!0}),h=()=>{document.removeEventListener("pointermove",m),document.removeEventListener("pointerup",v),document.removeEventListener("pointerout",g),document.removeEventListener("pointercancel",g),document.removeEventListener("touchmove",y),setTimeout((()=>{document.removeEventListener("click",f,{capture:!0})}),10)}};return t.addEventListener("pointerdown",a),()=>{h(),t.removeEventListener("pointerdown",a)}}function o(t,e){const i=e.xmlns?document.createElementNS(e.xmlns,t):document.createElement(t);for(const[t,n]of Object.entries(e))if("children"===t&&n)for(const[t,e]of Object.entries(n))e instanceof Node?i.appendChild(e):"string"==typeof e?i.appendChild(document.createTextNode(e)):i.appendChild(o(t,e));else"style"===t?Object.assign(i.style,n):"textContent"===t?i.textContent=n:i.setAttribute(t,n.toString());return i}function n(t,e,i){const n=o(t,e||{});return null==i||i.appendChild(n),n}const s={points:[],lineWidth:4,lineColor:"rgba(0, 0, 255, 0.5)",dragPointSize:10,dragPointFill:"rgba(255, 255, 255, 0.8)",dragPointStroke:"rgba(255, 255, 255, 0.8)"};class r extends t{constructor(t,e){super(),this.subscriptions=[],this.subscriptions=[],this.options=t,this.polyPoints=new Map;const o=e.clientWidth,s=e.clientHeight,r=n("svg",{xmlns:"http://www.w3.org/2000/svg",width:"100%",height:"100%",viewBox:`0 0 ${o} ${s}`,preserveAspectRatio:"none",style:{position:"absolute",left:"0",top:"0",zIndex:"4"},part:"envelope"},e);this.svg=r;const l=n("polyline",{xmlns:"http://www.w3.org/2000/svg",points:`0,${s} ${o},${s}`,stroke:t.lineColor,"stroke-width":t.lineWidth,fill:"none",part:"polyline",style:t.dragLine?{cursor:"row-resize",pointerEvents:"stroke"}:{}},r);t.dragLine&&this.subscriptions.push(i(l,((t,e)=>{const{height:i}=r.viewBox.baseVal,{points:o}=l;for(let t=1;t<o.numberOfItems-1;t++){const n=o.getItem(t);n.y=Math.min(i,Math.max(0,n.y+e))}const n=r.querySelectorAll("ellipse");Array.from(n).forEach((t=>{const o=Math.min(i,Math.max(0,Number(t.getAttribute("cy"))+e));t.setAttribute("cy",o.toString())})),this.emit("line-move",e/i)}))),r.addEventListener("dblclick",(t=>{const e=r.getBoundingClientRect(),i=t.clientX-e.left,o=t.clientY-e.top;this.emit("point-create",i/e.width,o/e.height)}));{let t;const e=()=>clearTimeout(t);r.addEventListener("touchstart",(i=>{1===i.touches.length?t=window.setTimeout((()=>{i.preventDefault();const t=r.getBoundingClientRect(),e=i.touches[0].clientX-t.left,o=i.touches[0].clientY-t.top;this.emit("point-create",e/t.width,o/t.height)}),500):e()})),r.addEventListener("touchmove",e),r.addEventListener("touchend",e)}}makeDraggable(t,e){this.subscriptions.push(i(t,e,(()=>t.style.cursor="grabbing"),(()=>t.style.cursor="grab"),1))}createCircle(t,e){const i=this.options.dragPointSize/2;return n("ellipse",{xmlns:"http://www.w3.org/2000/svg",cx:t,cy:e,rx:i,ry:i,fill:this.options.dragPointFill,stroke:this.options.dragPointStroke,"stroke-width":"2",style:{cursor:"grab",pointerEvents:"all"},part:"envelope-circle"},this.svg)}removePolyPoint(t){const e=this.polyPoints.get(t);if(!e)return;const{polyPoint:i,circle:o}=e,{points:n}=this.svg.querySelector("polyline"),s=Array.from(n).findIndex((t=>t.x===i.x&&t.y===i.y));n.removeItem(s),o.remove(),this.polyPoints.delete(t)}addPolyPoint(t,e,i){const{svg:o}=this,{width:n,height:s}=o.viewBox.baseVal,r=t*n,l=s-e*s,h=this.options.dragPointSize/2,a=o.createSVGPoint();a.x=t*n,a.y=s-e*s;const u=this.createCircle(r,l),{points:c}=o.querySelector("polyline"),d=Array.from(c).findIndex((t=>t.x>=r));c.insertItemBefore(a,Math.max(d,1)),this.polyPoints.set(i,{polyPoint:a,circle:u}),this.makeDraggable(u,((t,e)=>{const o=a.x+t,r=a.y+e;if(o<-h||r<-h||o>n+h||r>s+h)return void this.emit("point-dragout",i);const l=Array.from(c).find((t=>t.x>a.x)),d=Array.from(c).findLast((t=>t.x<a.x));l&&o>=l.x||d&&o<=d.x||(a.x=o,a.y=r,u.setAttribute("cx",o.toString()),u.setAttribute("cy",r.toString()),this.emit("point-move",i,o/n,r/s))}))}update(){const{svg:t}=this,e=t.viewBox.baseVal.width/t.clientWidth,i=t.viewBox.baseVal.height/t.clientHeight;t.querySelectorAll("ellipse").forEach((t=>{const o=this.options.dragPointSize/2,n=o*e,s=o*i;t.setAttribute("rx",n.toString()),t.setAttribute("ry",s.toString())}))}destroy(){this.subscriptions.forEach((t=>t())),this.polyPoints.clear(),this.svg.remove()}}class l extends e{constructor(t){super(t),this.polyline=null,this.throttleTimeout=null,this.volume=1,this.points=t.points||[],this.options=Object.assign({},s,t),this.options.lineColor=this.options.lineColor||s.lineColor,this.options.dragPointFill=this.options.dragPointFill||s.dragPointFill,this.options.dragPointStroke=this.options.dragPointStroke||s.dragPointStroke,this.options.dragPointSize=this.options.dragPointSize||s.dragPointSize}static create(t){return new l(t)}addPoint(t){var e;t.id||(t.id=Math.random().toString(36).slice(2));const i=this.points.findLastIndex((e=>e.time<t.time));this.points.splice(i+1,0,t),this.emitPoints();const o=null===(e=this.wavesurfer)||void 0===e?void 0:e.getDuration();o&&this.addPolyPoint(t,o)}removePoint(t){var e;const i=this.points.indexOf(t);i>-1&&(this.points.splice(i,1),null===(e=this.polyline)||void 0===e||e.removePolyPoint(t),this.emitPoints())}getPoints(){return this.points}setPoints(t){this.points.slice().forEach((t=>this.removePoint(t))),t.forEach((t=>this.addPoint(t)))}destroy(){var t;null===(t=this.polyline)||void 0===t||t.destroy(),super.destroy()}getCurrentVolume(){return this.volume}setVolume(t){var e;this.volume=t,null===(e=this.wavesurfer)||void 0===e||e.setVolume(t)}onInit(){var t;if(!this.wavesurfer)throw Error("WaveSurfer is not initialized");const{options:e}=this;e.volume=null!==(t=e.volume)&&void 0!==t?t:this.wavesurfer.getVolume(),this.setVolume(e.volume),this.subscriptions.push(this.wavesurfer.on("decode",(t=>{this.initPolyline(),this.points.forEach((e=>{this.addPolyPoint(e,t)}))})),this.wavesurfer.on("redraw",(()=>{var t;null===(t=this.polyline)||void 0===t||t.update()})),this.wavesurfer.on("timeupdate",(t=>{this.onTimeUpdate(t)})))}emitPoints(){this.throttleTimeout&&clearTimeout(this.throttleTimeout),this.throttleTimeout=setTimeout((()=>{this.emit("points-change",this.points)}),200)}initPolyline(){if(this.polyline&&this.polyline.destroy(),!this.wavesurfer)return;const t=this.wavesurfer.getWrapper();this.polyline=new r(this.options,t),this.subscriptions.push(this.polyline.on("point-move",((t,e,i)=>{var o;const n=(null===(o=this.wavesurfer)||void 0===o?void 0:o.getDuration())||0;t.time=e*n,t.volume=1-i,this.emitPoints()})),this.polyline.on("point-dragout",(t=>{this.removePoint(t)})),this.polyline.on("point-create",((t,e)=>{var i;this.addPoint({time:t*((null===(i=this.wavesurfer)||void 0===i?void 0:i.getDuration())||0),volume:1-e})})),this.polyline.on("line-move",(t=>{var e;this.points.forEach((e=>{e.volume=Math.min(1,Math.max(0,e.volume-t))})),this.emitPoints(),this.onTimeUpdate((null===(e=this.wavesurfer)||void 0===e?void 0:e.getCurrentTime())||0)})))}addPolyPoint(t,e){var i;null===(i=this.polyline)||void 0===i||i.addPolyPoint(t.time/e,t.volume,t)}onTimeUpdate(t){if(!this.wavesurfer)return;let e=this.points.find((e=>e.time>t));e||(e={time:this.wavesurfer.getDuration()||0,volume:0});let i=this.points.findLast((e=>e.time<=t));i||(i={time:0,volume:0});const o=e.time-i.time,n=e.volume-i.volume,s=i.volume+(t-i.time)*(n/o),r=Math.min(1,Math.max(0,s)),l=Math.round(100*r)/100;l!==this.getCurrentVolume()&&(this.setVolume(l),this.emit("volume-change",l))}}export{l as default};
+/**
+ * Envelope is a visual UI for controlling the audio volume and add fade-in and fade-out effects.
+ */
+import BasePlugin from '../base-plugin.js';
+import { makeDraggable } from '../draggable.js';
+import EventEmitter from '../event-emitter.js';
+import createElement from '../dom.js';
+const defaultOptions = {
+    points: [],
+    lineWidth: 4,
+    lineColor: 'rgba(0, 0, 255, 0.5)',
+    dragPointSize: 10,
+    dragPointFill: 'rgba(255, 255, 255, 0.8)',
+    dragPointStroke: 'rgba(255, 255, 255, 0.8)',
+};
+class Polyline extends EventEmitter {
+    svg;
+    options;
+    polyPoints;
+    subscriptions = [];
+    constructor(options, wrapper) {
+        super();
+        this.subscriptions = [];
+        this.options = options;
+        this.polyPoints = new Map();
+        const width = wrapper.clientWidth;
+        const height = wrapper.clientHeight;
+        // SVG element
+        const svg = createElement('svg', {
+            xmlns: 'http://www.w3.org/2000/svg',
+            width: '100%',
+            height: '100%',
+            viewBox: `0 0 ${width} ${height}`,
+            preserveAspectRatio: 'none',
+            style: {
+                position: 'absolute',
+                left: '0',
+                top: '0',
+                zIndex: '4',
+            },
+            part: 'envelope',
+        }, wrapper);
+        this.svg = svg;
+        // A polyline representing the envelope
+        const polyline = createElement('polyline', {
+            xmlns: 'http://www.w3.org/2000/svg',
+            points: `0,${height} ${width},${height}`,
+            stroke: options.lineColor,
+            'stroke-width': options.lineWidth,
+            fill: 'none',
+            part: 'polyline',
+            style: options.dragLine
+                ? {
+                    cursor: 'row-resize',
+                    pointerEvents: 'stroke',
+                }
+                : {},
+        }, svg);
+        // Make the polyline draggable along the Y axis
+        if (options.dragLine) {
+            this.subscriptions.push(makeDraggable(polyline, (_, dy) => {
+                const { height } = svg.viewBox.baseVal;
+                const { points } = polyline;
+                for (let i = 1; i < points.numberOfItems - 1; i++) {
+                    const point = points.getItem(i);
+                    point.y = Math.min(height, Math.max(0, point.y + dy));
+                }
+                const circles = svg.querySelectorAll('ellipse');
+                Array.from(circles).forEach((circle) => {
+                    const newY = Math.min(height, Math.max(0, Number(circle.getAttribute('cy')) + dy));
+                    circle.setAttribute('cy', newY.toString());
+                });
+                this.emit('line-move', dy / height);
+            }));
+        }
+        // Listen to double click to add a new point
+        svg.addEventListener('dblclick', (e) => {
+            const rect = svg.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            this.emit('point-create', x / rect.width, y / rect.height);
+        });
+        // Long press on touch devices
+        {
+            let pressTimer;
+            const clearTimer = () => clearTimeout(pressTimer);
+            svg.addEventListener('touchstart', (e) => {
+                if (e.touches.length === 1) {
+                    pressTimer = window.setTimeout(() => {
+                        e.preventDefault();
+                        const rect = svg.getBoundingClientRect();
+                        const x = e.touches[0].clientX - rect.left;
+                        const y = e.touches[0].clientY - rect.top;
+                        this.emit('point-create', x / rect.width, y / rect.height);
+                    }, 500);
+                }
+                else {
+                    clearTimer();
+                }
+            });
+            svg.addEventListener('touchmove', clearTimer);
+            svg.addEventListener('touchend', clearTimer);
+        }
+    }
+    makeDraggable(draggable, onDrag) {
+        this.subscriptions.push(makeDraggable(draggable, onDrag, () => (draggable.style.cursor = 'grabbing'), () => (draggable.style.cursor = 'grab'), 1));
+    }
+    createCircle(x, y) {
+        const size = this.options.dragPointSize;
+        const radius = size / 2;
+        return createElement('ellipse', {
+            xmlns: 'http://www.w3.org/2000/svg',
+            cx: x,
+            cy: y,
+            rx: radius,
+            ry: radius,
+            fill: this.options.dragPointFill,
+            stroke: this.options.dragPointStroke,
+            'stroke-width': '2',
+            style: {
+                cursor: 'grab',
+                pointerEvents: 'all',
+            },
+            part: 'envelope-circle',
+        }, this.svg);
+    }
+    removePolyPoint(point) {
+        const item = this.polyPoints.get(point);
+        if (!item)
+            return;
+        const { polyPoint, circle } = item;
+        const { points } = this.svg.querySelector('polyline');
+        const index = Array.from(points).findIndex((p) => p.x === polyPoint.x && p.y === polyPoint.y);
+        points.removeItem(index);
+        circle.remove();
+        this.polyPoints.delete(point);
+    }
+    addPolyPoint(relX, relY, refPoint) {
+        const { svg } = this;
+        const { width, height } = svg.viewBox.baseVal;
+        const x = relX * width;
+        const y = height - relY * height;
+        const threshold = this.options.dragPointSize / 2;
+        const newPoint = svg.createSVGPoint();
+        newPoint.x = relX * width;
+        newPoint.y = height - relY * height;
+        const circle = this.createCircle(x, y);
+        const { points } = svg.querySelector('polyline');
+        const newIndex = Array.from(points).findIndex((point) => point.x >= x);
+        points.insertItemBefore(newPoint, Math.max(newIndex, 1));
+        this.polyPoints.set(refPoint, { polyPoint: newPoint, circle });
+        this.makeDraggable(circle, (dx, dy) => {
+            const newX = newPoint.x + dx;
+            const newY = newPoint.y + dy;
+            // Remove the point if it's dragged out of the SVG
+            if (newX < -threshold || newY < -threshold || newX > width + threshold || newY > height + threshold) {
+                this.emit('point-dragout', refPoint);
+                return;
+            }
+            // Don't allow to drag past the next or previous point
+            const next = Array.from(points).find((point) => point.x > newPoint.x);
+            const prev = Array.from(points).findLast((point) => point.x < newPoint.x);
+            if ((next && newX >= next.x) || (prev && newX <= prev.x)) {
+                return;
+            }
+            // Update the point and the circle position
+            newPoint.x = newX;
+            newPoint.y = newY;
+            circle.setAttribute('cx', newX.toString());
+            circle.setAttribute('cy', newY.toString());
+            // Emit the event passing the point and new relative coordinates
+            this.emit('point-move', refPoint, newX / width, newY / height);
+        });
+    }
+    update() {
+        const { svg } = this;
+        const aspectRatioX = svg.viewBox.baseVal.width / svg.clientWidth;
+        const aspectRatioY = svg.viewBox.baseVal.height / svg.clientHeight;
+        const circles = svg.querySelectorAll('ellipse');
+        circles.forEach((circle) => {
+            const radius = this.options.dragPointSize / 2;
+            const rx = radius * aspectRatioX;
+            const ry = radius * aspectRatioY;
+            circle.setAttribute('rx', rx.toString());
+            circle.setAttribute('ry', ry.toString());
+        });
+    }
+    destroy() {
+        this.subscriptions.forEach((unsubscribe) => unsubscribe());
+        this.polyPoints.clear();
+        this.svg.remove();
+    }
+}
+const randomId = () => Math.random().toString(36).slice(2);
+class EnvelopePlugin extends BasePlugin {
+    options;
+    polyline = null;
+    points;
+    throttleTimeout = null;
+    volume = 1;
+    /**
+     * Create a new Envelope plugin.
+     */
+    constructor(options) {
+        super(options);
+        this.points = options.points || [];
+        this.options = Object.assign({}, defaultOptions, options);
+        this.options.lineColor = this.options.lineColor || defaultOptions.lineColor;
+        this.options.dragPointFill = this.options.dragPointFill || defaultOptions.dragPointFill;
+        this.options.dragPointStroke = this.options.dragPointStroke || defaultOptions.dragPointStroke;
+        this.options.dragPointSize = this.options.dragPointSize || defaultOptions.dragPointSize;
+    }
+    static create(options) {
+        return new EnvelopePlugin(options);
+    }
+    /**
+     * Add an envelope point with a given time and volume.
+     */
+    addPoint(point) {
+        if (!point.id)
+            point.id = randomId();
+        // Insert the point in the correct position to keep the array sorted
+        const index = this.points.findLastIndex((p) => p.time < point.time);
+        this.points.splice(index + 1, 0, point);
+        this.emitPoints();
+        // Add the point to the polyline if the duration is available
+        const duration = this.wavesurfer?.getDuration();
+        if (duration) {
+            this.addPolyPoint(point, duration);
+        }
+    }
+    /**
+     * Remove an envelope point.
+     */
+    removePoint(point) {
+        const index = this.points.indexOf(point);
+        if (index > -1) {
+            this.points.splice(index, 1);
+            this.polyline?.removePolyPoint(point);
+            this.emitPoints();
+        }
+    }
+    /**
+     * Get all envelope points. Should not be modified directly.
+     */
+    getPoints() {
+        return this.points;
+    }
+    /**
+     * Set new envelope points.
+     */
+    setPoints(newPoints) {
+        this.points.slice().forEach((point) => this.removePoint(point));
+        newPoints.forEach((point) => this.addPoint(point));
+    }
+    /**
+     * Destroy the plugin instance.
+     */
+    destroy() {
+        this.polyline?.destroy();
+        super.destroy();
+    }
+    /**
+     * Get the envelope volume.
+     */
+    getCurrentVolume() {
+        return this.volume;
+    }
+    /**
+     * Set the envelope volume. 0..1 (more than 1 will boost the volume).
+     */
+    setVolume(floatValue) {
+        this.volume = floatValue;
+        this.wavesurfer?.setVolume(floatValue);
+    }
+    /** Called by wavesurfer, don't call manually */
+    onInit() {
+        if (!this.wavesurfer) {
+            throw Error('WaveSurfer is not initialized');
+        }
+        const { options } = this;
+        options.volume = options.volume ?? this.wavesurfer.getVolume();
+        this.setVolume(options.volume);
+        this.subscriptions.push(this.wavesurfer.on('decode', (duration) => {
+            this.initPolyline();
+            this.points.forEach((point) => {
+                this.addPolyPoint(point, duration);
+            });
+        }), this.wavesurfer.on('redraw', () => {
+            this.polyline?.update();
+        }), this.wavesurfer.on('timeupdate', (time) => {
+            this.onTimeUpdate(time);
+        }));
+    }
+    emitPoints() {
+        if (this.throttleTimeout) {
+            clearTimeout(this.throttleTimeout);
+        }
+        this.throttleTimeout = setTimeout(() => {
+            this.emit('points-change', this.points);
+        }, 200);
+    }
+    initPolyline() {
+        if (this.polyline)
+            this.polyline.destroy();
+        if (!this.wavesurfer)
+            return;
+        const wrapper = this.wavesurfer.getWrapper();
+        this.polyline = new Polyline(this.options, wrapper);
+        this.subscriptions.push(this.polyline.on('point-move', (point, relativeX, relativeY) => {
+            const duration = this.wavesurfer?.getDuration() || 0;
+            point.time = relativeX * duration;
+            point.volume = 1 - relativeY;
+            this.emitPoints();
+        }), this.polyline.on('point-dragout', (point) => {
+            this.removePoint(point);
+        }), this.polyline.on('point-create', (relativeX, relativeY) => {
+            this.addPoint({
+                time: relativeX * (this.wavesurfer?.getDuration() || 0),
+                volume: 1 - relativeY,
+            });
+        }), this.polyline.on('line-move', (relativeY) => {
+            this.points.forEach((point) => {
+                point.volume = Math.min(1, Math.max(0, point.volume - relativeY));
+            });
+            this.emitPoints();
+            this.onTimeUpdate(this.wavesurfer?.getCurrentTime() || 0);
+        }));
+    }
+    addPolyPoint(point, duration) {
+        this.polyline?.addPolyPoint(point.time / duration, point.volume, point);
+    }
+    onTimeUpdate(time) {
+        if (!this.wavesurfer)
+            return;
+        let nextPoint = this.points.find((point) => point.time > time);
+        if (!nextPoint) {
+            nextPoint = { time: this.wavesurfer.getDuration() || 0, volume: 0 };
+        }
+        let prevPoint = this.points.findLast((point) => point.time <= time);
+        if (!prevPoint) {
+            prevPoint = { time: 0, volume: 0 };
+        }
+        const timeDiff = nextPoint.time - prevPoint.time;
+        const volumeDiff = nextPoint.volume - prevPoint.volume;
+        const newVolume = prevPoint.volume + (time - prevPoint.time) * (volumeDiff / timeDiff);
+        const clampedVolume = Math.min(1, Math.max(0, newVolume));
+        const roundedVolume = Math.round(clampedVolume * 100) / 100;
+        if (roundedVolume !== this.getCurrentVolume()) {
+            this.setVolume(roundedVolume);
+            this.emit('volume-change', roundedVolume);
+        }
+    }
+}
+export default EnvelopePlugin;
