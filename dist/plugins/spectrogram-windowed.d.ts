@@ -149,5 +149,7 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     stopProgressiveLoading(): void;
     /** Restart progressive loading from the beginning */
     restartProgressiveLoading(): void;
+    /** Check if WASM acceleration is available and working */
+    checkWasmAvailability(): Promise<boolean>;
 }
 export default WindowedSpectrogramPlugin;

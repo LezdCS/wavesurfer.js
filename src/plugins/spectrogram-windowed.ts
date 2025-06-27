@@ -231,8 +231,42 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const workerCode = `
 /**
  * Web Worker for Windowed Spectrogram Plugin
- * Handles FFT calculations for frequency analysis
+ * Handles FFT calculations for frequency analysis with optional WASM acceleration
  */
+
+// WASM Module variables
+let wasmModule = null;
+let wasmFFT = null;
+let wasmFilterBank = null;
+let wasmReady = false;
+let initWasmPromise = null;
+
+// Try to load WASM module - fails gracefully if not available
+async function initWasm() {
+  if (initWasmPromise) return initWasmPromise;
+  
+  initWasmPromise = (async () => {
+    try {
+      // Try to import the WASM module
+      const wasmPath = self.location.origin + '/dist/wasm/wavesurfer_fft.js';
+      const { default: init, WasmFFT, WasmFilterBank, db_to_color_indices } = await import(wasmPath);
+      
+      // Initialize the WASM module
+      await init();
+      
+      wasmModule = { WasmFFT, WasmFilterBank, db_to_color_indices };
+      wasmReady = true;
+      console.log('🦀 WASM FFT module loaded successfully!');
+      return true;
+    } catch (error) {
+      console.warn('WASM FFT not available, using JavaScript fallback:', error.message);
+      wasmReady = false;
+      return false;
+    }
+  })();
+  
+  return initWasmPromise;
+}
 
 // FFT Implementation - Based on https://github.com/corbanbrook/dsp.js
 function FFT(bufferSize, sampleRate, windowFunc, alpha) {
@@ -481,12 +515,15 @@ function applyFilterBank(fftPoints, filterBank) {
 }
 
 // Worker message handler
-self.onmessage = function(e) {
+self.onmessage = async function(e) {
   const { type, id, audioData, options } = e.data
   
   if (type === 'calculateFrequencies') {
     try {
-      const result = calculateFrequencies(audioData, options)
+      // Initialize WASM if available
+      await initWasm();
+      
+      const result = await calculateFrequencies(audioData, options)
       self.postMessage({
         type: 'frequenciesResult',
         id: id,
@@ -499,13 +536,114 @@ self.onmessage = function(e) {
         error: error instanceof Error ? error.message : String(error)
       })
     }
+  } else if (type === 'checkWasm') {
+    try {
+      await initWasm();
+      self.postMessage({
+        type: 'wasmAvailable',
+        id: id,
+        available: wasmReady
+      })
+    } catch (error) {
+      self.postMessage({
+        type: 'wasmAvailable',
+        id: id,
+        available: false
+      })
+    }
   }
 }
 
 /**
  * Calculate frequency data for audio channels
  */
-function calculateFrequencies(audioChannels, options) {
+async function calculateFrequencies(audioChannels, options) {
+  const {
+    startTime, endTime, sampleRate, fftSamples, windowFunc, alpha,
+    noverlap, scale, gainDB, rangeDB, splitChannels
+  } = options
+
+  const startSample = Math.floor(startTime * sampleRate)
+  const endSample = Math.floor(endTime * sampleRate)
+  const channels = splitChannels ? audioChannels.length : 1
+
+  // Use WASM FFT if available, otherwise fall back to JavaScript
+  if (wasmReady && wasmModule) {
+    return await calculateFrequenciesWasm(audioChannels, options)
+  } else {
+    return calculateFrequenciesJS(audioChannels, options)
+  }
+}
+
+/**
+ * WASM-accelerated frequency calculation
+ */
+async function calculateFrequenciesWasm(audioChannels, options) {
+  const {
+    startTime, endTime, sampleRate, fftSamples, windowFunc, alpha,
+    noverlap, scale, gainDB, rangeDB, splitChannels
+  } = options
+
+  const startSample = Math.floor(startTime * sampleRate)
+  const endSample = Math.floor(endTime * sampleRate)
+  const channels = splitChannels ? audioChannels.length : 1
+
+  try {
+    // Initialize WASM FFT (reuse if possible for performance)
+    if (!wasmFFT || wasmFFT.size !== fftSamples) {
+      wasmFFT = new wasmModule.WasmFFT(fftSamples, windowFunc || 'hann', alpha);
+    }
+
+    // Initialize filter bank if needed
+    if (scale !== 'linear' && (!wasmFilterBank || wasmFilterBank.scale !== scale)) {
+      const numFilters = fftSamples / 2;
+      wasmFilterBank = new wasmModule.WasmFilterBank(numFilters, fftSamples, sampleRate, scale);
+      wasmFilterBank.scale = scale; // Store for comparison
+    }
+
+    // Calculate hop size
+    let actualNoverlap = noverlap || Math.max(0, Math.round(fftSamples * 0.5))
+    const maxOverlap = fftSamples * 0.5
+    actualNoverlap = Math.min(actualNoverlap, maxOverlap)
+    const minHopSize = Math.max(64, fftSamples * 0.25)
+    const hopSize = Math.max(minHopSize, fftSamples - actualNoverlap)
+
+    const frequencies = []
+
+    for (let c = 0; c < channels; c++) {
+      const channelData = audioChannels[c]
+      const channelFreq = []
+
+      for (let sample = startSample; sample + fftSamples < endSample; sample += hopSize) {
+        const segment = channelData.slice(sample, sample + fftSamples)
+        
+        // Use WASM FFT
+        let spectrum = wasmFFT.calculate_spectrum(segment)
+        
+        // Apply filter bank if specified
+        if (wasmFilterBank && scale !== 'linear') {
+          spectrum = wasmFilterBank.apply(spectrum)
+        }
+
+        // Convert to uint8 color indices using WASM
+        const freqBins = wasmModule.db_to_color_indices(spectrum, gainDB, rangeDB)
+        channelFreq.push(new Uint8Array(freqBins))
+      }
+      frequencies.push(channelFreq)
+    }
+
+    return frequencies
+  } catch (error) {
+    console.warn('WASM calculation failed, falling back to JS:', error)
+    // Fall back to JavaScript implementation
+    return calculateFrequenciesJS(audioChannels, options)
+  }
+}
+
+/**
+ * JavaScript fallback frequency calculation
+ */
+function calculateFrequenciesJS(audioChannels, options) {
   const {
     startTime, endTime, sampleRate, fftSamples, windowFunc, alpha,
     noverlap, scale, gainDB, rangeDB, splitChannels
@@ -1766,6 +1904,29 @@ function calculateFrequencies(audioChannels, options) {
     if (this.progressiveLoading) {
       this.startProgressiveLoading()
     }
+  }
+
+  /** Check if WASM acceleration is available and working */
+  public async checkWasmAvailability(): Promise<boolean> {
+    if (!this.worker) return false
+    
+    return new Promise((resolve) => {
+      const id = `wasm_check_${Date.now()}`
+      const timeout = setTimeout(() => {
+        resolve(false)
+      }, 5000) // 5 second timeout
+      
+      const checkHandler = (e: MessageEvent) => {
+        if (e.data.type === 'wasmAvailable' && e.data.id === id) {
+          clearTimeout(timeout)
+          this.worker?.removeEventListener('message', checkHandler)
+          resolve(e.data.available)
+        }
+      }
+      
+      this.worker.addEventListener('message', checkHandler)
+      this.worker.postMessage({ type: 'checkWasm', id })
+    })
   }
 }
 
