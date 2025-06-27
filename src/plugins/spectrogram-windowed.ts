@@ -10,7 +10,21 @@
 import BasePlugin, { type BasePluginEvents } from '../base-plugin.js'
 import createElement from '../dom.js'
 // Import centralized FFT functionality
-import FFT, { ERB_A } from '../fft.js'
+import FFT, { 
+  ERB_A,
+  hzToMel,
+  melToHz,
+  hzToLog,
+  logToHz,
+  hzToBark,
+  barkToHz,
+  hzToErb,
+  erbToHz,
+  hzToScale,
+  scaleToHz,
+  createFilterBank,
+  applyFilterBank
+} from '../fft.js'
 
 export type WindowedSpectrogramPluginOptions = {
   /** Selector of element or element in which to render */
@@ -1297,7 +1311,7 @@ function calculateFrequencies(audioChannels, options) {
         // Apply filter bank if needed
         const filterBank = this.getFilterBank(sampleRate)
         if (filterBank) {
-          spectrum = this.applyFilterBank(spectrum, filterBank)
+          spectrum = applyFilterBank(spectrum, filterBank)
         }
 
         // Convert to uint8 color indices
@@ -1399,8 +1413,8 @@ function calculateFrequencies(audioChannels, options) {
     }
 
     // Calculate frequency scaling like the normal plugin
-    const rMin = this.hzToScale(freqMin) / this.hzToScale(freqFrom)
-    const rMax = this.hzToScale(freqMax) / this.hzToScale(freqFrom)
+    const rMin = hzToScale(freqMin, this.scale) / hzToScale(freqFrom, this.scale)
+    const rMax = hzToScale(freqMax, this.scale) / hzToScale(freqFrom, this.scale)
     const rMax1 = Math.min(1, rMax)
 
     // Use the same frequency scaling approach as the regular spectrogram plugin
@@ -1438,70 +1452,19 @@ function calculateFrequencies(audioChannels, options) {
   private getFilterBank(sampleRate: number): number[][] | null {
     switch (this.scale) {
       case 'mel':
-        return this.createFilterBank(this.numMelFilters, sampleRate, this.hzToMel, this.melToHz)
+        return createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
       case 'logarithmic':
-        return this.createFilterBank(this.numLogFilters, sampleRate, this.hzToLog, this.logToHz)
+        return createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
       case 'bark':
-        return this.createFilterBank(this.numBarkFilters, sampleRate, this.hzToBark, this.barkToHz)
+        return createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
       case 'erb':
-        return this.createFilterBank(this.numErbFilters, sampleRate, this.hzToErb, this.erbToHz)
+        return createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
       default:
         return null
     }
   }
 
-  // Frequency scaling methods (same as original)
-  private hzToMel(hz: number) { return 2595 * Math.log10(1 + hz / 700) }
-  private melToHz(mel: number) { return 700 * (Math.pow(10, mel / 2595) - 1) }
-  private hzToLog(hz: number) { return Math.log10(Math.max(1, hz)) }
-  private logToHz(log: number) { return Math.pow(10, log) }
-  private hzToBark(hz: number) {
-    let bark = (26.81 * hz) / (1960 + hz) - 0.53
-    if (bark < 2) bark += 0.15 * (2 - bark)
-    if (bark > 20.1) bark += 0.22 * (bark - 20.1)
-    return bark
-  }
-  private barkToHz(bark: number) {
-    if (bark < 2) bark = (bark - 0.3) / 0.85
-    if (bark > 20.1) bark = (bark + 4.422) / 1.22
-    return 1960 * ((bark + 0.53) / (26.28 - bark))
-  }
-  private hzToErb(hz: number) { return ERB_A * Math.log10(1 + hz * 0.00437) }
-  private erbToHz(erb: number) { return (Math.pow(10, erb / ERB_A) - 1) / 0.00437 }
 
-  private createFilterBank(
-    numFilters: number,
-    sampleRate: number,
-    hzToScale: (hz: number) => number,
-    scaleToHz: (scale: number) => number,
-  ): number[][] {
-    const filterMin = hzToScale(0)
-    const filterMax = hzToScale(sampleRate / 2)
-    const filterBank = Array.from({ length: numFilters }, () => Array(this.fftSamples / 2 + 1).fill(0))
-    const scale = sampleRate / this.fftSamples
-    
-    for (let i = 0; i < numFilters; i++) {
-      let hz = scaleToHz(filterMin + (i / numFilters) * (filterMax - filterMin))
-      let j = Math.floor(hz / scale)
-      let hzLow = j * scale
-      let hzHigh = (j + 1) * scale
-      let r = (hz - hzLow) / (hzHigh - hzLow)
-      filterBank[i][j] = 1 - r
-      filterBank[i][j + 1] = r
-    }
-    return filterBank
-  }
-
-  private applyFilterBank(fftPoints: Float32Array, filterBank: number[][]): Float32Array {
-    const numFilters = filterBank.length
-    const logSpectrum = Float32Array.from({ length: numFilters }, () => 0)
-    for (let i = 0; i < numFilters; i++) {
-      for (let j = 0; j < fftPoints.length; j++) {
-        logSpectrum[i] += fftPoints[j] * filterBank[i][j]
-      }
-    }
-    return logSpectrum
-  }
 
   private _onWrapperClick = (e: MouseEvent) => {
     const rect = this.wrapper.getBoundingClientRect()
@@ -1519,38 +1482,12 @@ function calculateFrequencies(audioChannels, options) {
     return freq >= 1000 ? 'kHz' : 'Hz'
   }
 
-  private hzToScale(hz: number) {
-    switch (this.scale) {
-      case 'mel':
-        return this.hzToMel(hz)
-      case 'logarithmic':
-        return this.hzToLog(hz)
-      case 'bark':
-        return this.hzToBark(hz)
-      case 'erb':
-        return this.hzToErb(hz)
-    }
-    return hz
-  }
 
-  private scaleToHz(scale: number) {
-    switch (this.scale) {
-      case 'mel':
-        return this.melToHz(scale)
-      case 'logarithmic':
-        return this.logToHz(scale)
-      case 'bark':
-        return this.barkToHz(scale)
-      case 'erb':
-        return this.erbToHz(scale)
-    }
-    return scale
-  }
 
   private getLabelFrequency(index: number, labelIndex: number) {
-    const scaleMin = this.hzToScale(this.frequencyMin)
-    const scaleMax = this.hzToScale(this.frequencyMax)
-    return this.scaleToHz(scaleMin + (index / labelIndex) * (scaleMax - scaleMin))
+    const scaleMin = hzToScale(this.frequencyMin, this.scale)
+    const scaleMax = hzToScale(this.frequencyMax, this.scale)
+    return scaleToHz(scaleMin + (index / labelIndex) * (scaleMax - scaleMin), this.scale)
   }
 
   private loadLabels(

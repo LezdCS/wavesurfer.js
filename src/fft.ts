@@ -9,6 +9,139 @@
 
 export const ERB_A = (1000 * Math.log(10)) / (24.7 * 4.37)
 
+// Frequency scaling functions
+export function hzToMel(hz: number): number {
+  return 2595 * Math.log10(1 + hz / 700)
+}
+
+export function melToHz(mel: number): number {
+  return 700 * (Math.pow(10, mel / 2595) - 1)
+}
+
+export function hzToLog(hz: number): number {
+  return Math.log10(Math.max(1, hz))
+}
+
+export function logToHz(log: number): number {
+  return Math.pow(10, log)
+}
+
+export function hzToBark(hz: number): number {
+  // https://www.mathworks.com/help/audio/ref/hz2bark.html#function_hz2bark_sep_mw_06bea6f7-353b-4479-a58d-ccadb90e44de
+  let bark = (26.81 * hz) / (1960 + hz) - 0.53
+  if (bark < 2) {
+    bark += 0.15 * (2 - bark)
+  }
+  if (bark > 20.1) {
+    bark += 0.22 * (bark - 20.1)
+  }
+  return bark
+}
+
+export function barkToHz(bark: number): number {
+  // https://www.mathworks.com/help/audio/ref/bark2hz.html#function_bark2hz_sep_mw_bee310ea-48ac-4d95-ae3d-80f3e4149555
+  if (bark < 2) {
+    bark = (bark - 0.3) / 0.85
+  }
+  if (bark > 20.1) {
+    bark = (bark + 4.422) / 1.22
+  }
+  return 1960 * ((bark + 0.53) / (26.28 - bark))
+}
+
+export function hzToErb(hz: number): number {
+  // https://www.mathworks.com/help/audio/ref/hz2erb.html#function_hz2erb_sep_mw_06bea6f7-353b-4479-a58d-ccadb90e44de
+  return ERB_A * Math.log10(1 + hz * 0.00437)
+}
+
+export function erbToHz(erb: number): number {
+  // https://it.mathworks.com/help/audio/ref/erb2hz.html?#function_erb2hz_sep_mw_bee310ea-48ac-4d95-ae3d-80f3e4149555
+  return (Math.pow(10, erb / ERB_A) - 1) / 0.00437
+}
+
+// Generic scale conversion functions
+export function hzToScale(hz: number, scale: 'linear' | 'logarithmic' | 'mel' | 'bark' | 'erb'): number {
+  switch (scale) {
+    case 'mel':
+      return hzToMel(hz)
+    case 'logarithmic':
+      return hzToLog(hz)
+    case 'bark':
+      return hzToBark(hz)
+    case 'erb':
+      return hzToErb(hz)
+    default:
+      return hz
+  }
+}
+
+export function scaleToHz(scale: number, scaleType: 'linear' | 'logarithmic' | 'mel' | 'bark' | 'erb'): number {
+  switch (scaleType) {
+    case 'mel':
+      return melToHz(scale)
+    case 'logarithmic':
+      return logToHz(scale)
+    case 'bark':
+      return barkToHz(scale)
+    case 'erb':
+      return erbToHz(scale)
+    default:
+      return scale
+  }
+}
+
+// Filter bank functions  
+export function createFilterBank(
+  numFilters: number,
+  fftSamples: number,
+  sampleRate: number,
+  hzToScaleFunc: (hz: number) => number,
+  scaleToHzFunc: (scale: number) => number,
+): number[][] {
+  const filterMin = hzToScaleFunc(0)
+  const filterMax = hzToScaleFunc(sampleRate / 2)
+  const filterBank = Array.from({ length: numFilters }, () => Array(fftSamples / 2 + 1).fill(0))
+  const scale = sampleRate / fftSamples
+  
+  for (let i = 0; i < numFilters; i++) {
+    let hz = scaleToHzFunc(filterMin + (i / numFilters) * (filterMax - filterMin))
+    let j = Math.floor(hz / scale)
+    let hzLow = j * scale
+    let hzHigh = (j + 1) * scale
+    let r = (hz - hzLow) / (hzHigh - hzLow)
+    filterBank[i][j] = 1 - r
+    filterBank[i][j + 1] = r
+  }
+  return filterBank
+}
+
+export function createMelFilterBank(numMelFilters: number, fftSamples: number, sampleRate: number): number[][] {
+  return createFilterBank(numMelFilters, fftSamples, sampleRate, hzToMel, melToHz)
+}
+
+export function createLogFilterBank(numLogFilters: number, fftSamples: number, sampleRate: number): number[][] {
+  return createFilterBank(numLogFilters, fftSamples, sampleRate, hzToLog, logToHz)
+}
+
+export function createBarkFilterBank(numBarkFilters: number, fftSamples: number, sampleRate: number): number[][] {
+  return createFilterBank(numBarkFilters, fftSamples, sampleRate, hzToBark, barkToHz)
+}
+
+export function createErbFilterBank(numErbFilters: number, fftSamples: number, sampleRate: number): number[][] {
+  return createFilterBank(numErbFilters, fftSamples, sampleRate, hzToErb, erbToHz)
+}
+
+export function applyFilterBank(fftPoints: Float32Array, filterBank: number[][]): Float32Array {
+  const numFilters = filterBank.length
+  const logSpectrum = Float32Array.from({ length: numFilters }, () => 0)
+  for (let i = 0; i < numFilters; i++) {
+    for (let j = 0; j < fftPoints.length; j++) {
+      logSpectrum[i] += fftPoints[j] * filterBank[i][j]
+    }
+  }
+  return logSpectrum
+}
+
 /**
  * Calculate FFT - Based on https://github.com/corbanbrook/dsp.js
  */
