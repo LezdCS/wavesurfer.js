@@ -87,6 +87,7 @@
     "prettier": "^3.4.2",
     "rollup": "^4.28.1",
     "rollup-plugin-dts": "^6.1.0",
+    "rollup-plugin-web-worker-loader": "^1.7.0",
     "ts-jest": "^29.1.1",
     "typescript": "^5.7.2"
   }
