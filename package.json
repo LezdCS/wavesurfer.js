@@ -72,7 +72,7 @@
   "packageManager": "yarn@1.22.22",
   "devDependencies": {
     "@rollup/plugin-terser": "^0.4.4",
-    "@rollup/plugin-typescript": "^12.1.1",
+    "@rollup/plugin-typescript": "^12.1.4",
     "@types/jest": "^29.5.2",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
@@ -87,6 +87,7 @@
     "prettier": "^3.4.2",
     "rollup": "^4.28.1",
     "rollup-plugin-dts": "^6.1.0",
+    "rollup-plugin-web-worker-loader": "^1.7.0",
     "ts-jest": "^29.1.1",
     "typescript": "^5.7.2"
   }

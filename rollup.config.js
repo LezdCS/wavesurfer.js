@@ -4,7 +4,10 @@ import terser from '@rollup/plugin-terser'
 import dts from 'rollup-plugin-dts'
 
 const plugins = [typescript({ declaration: false, declarationDir: null }), terser({ format: { comments: false } })]
-
+const workerPlugins = [
+  typescript({ declaration: false, declarationDir: null }),
+  terser({ format: { comments: false } }),
+];
 export default [
   // ES module
   {
@@ -98,4 +101,16 @@ export default [
       },
     ])
     .flat(),
+
+    
+    ...glob
+      .sync('src/plugins/spectrogram/*.worker.ts')
+      .map((workerFile) => ({
+        input: workerFile,
+        output: {
+          file: workerFile.replace('src/', 'dist/').replace('.ts', '.js'),
+          format: 'es',
+        },
+        plugins: workerPlugins,
+      })),
 ]
