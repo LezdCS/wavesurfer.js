@@ -57,7 +57,9 @@
     "clean": "node ./scripts/clean.cjs",
     "build:dev": "tsc -w --target ESNext",
     "build": "npm run clean && tsc && rollup -c",
-    "prepublishOnly": "npm run build",
+    "build:wasm": "./build-wasm.sh",
+    "build:all": "npm run build && npm run build:wasm",
+    "prepublishOnly": "npm run build:all",
     "lint": "eslint --ext .ts src --fix",
     "lint:report": "eslint --output-file eslint_report.json --format json --ext .ts src",
     "prettier": "prettier -w '**/*.{js,ts,css}' --ignore-path .gitignore",
@@ -73,6 +75,7 @@
   "devDependencies": {
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^12.1.1",
+    "@rollup/plugin-wasm": "^6.2.2",
     "@types/jest": "^29.5.2",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",

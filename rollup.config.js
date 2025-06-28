@@ -2,9 +2,11 @@ import { glob } from 'glob'
 import typescript from '@rollup/plugin-typescript'
 import terser from '@rollup/plugin-terser'
 import dts from 'rollup-plugin-dts'
-import webWorkerLoader from 'rollup-plugin-web-worker-loader';
+import webWorkerLoader from 'rollup-plugin-web-worker-loader'
+import wasm from '@rollup/plugin-wasm'
 
 const plugins = [
+  wasm({ maxFileSize: 10000000 }), // Force inline WASM to avoid Web Worker issues
   webWorkerLoader(),
   typescript({ declaration: false, declarationDir: null }), 
   terser({ format: { comments: false } })
