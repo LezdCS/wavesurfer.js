@@ -89,9 +89,11 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private nextProgressiveSegmentTime;
     private worker;
     private workerPromises;
+    private workerBlobUrl;
     static create(options?: WindowedSpectrogramPluginOptions): WindowedSpectrogramPlugin;
     constructor(options: WindowedSpectrogramPluginOptions);
     private initializeWorker;
+    private createWorkerBlob;
     private setupColorMap;
     onInit(): void;
     private createWrapper;
