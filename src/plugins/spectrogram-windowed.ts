@@ -9,6 +9,8 @@
 
 import BasePlugin, { type BasePluginEvents } from '../base-plugin.js'
 import createElement from '../dom.js'
+import wasmInit, { WasmFFT, db_to_color_indices, initSync } from '../../pkg/wavesurfer_fft.js'
+
 // Import centralized FFT functionality
 import FFT, { 
   ERB_A,
@@ -196,6 +198,35 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
   }
 
+  private testWasmFFT() {
+    try {
+      // Test WasmFFT creation
+      const testFFT = new WasmFFT(this.fftSamples, this.windowFunc || 'hann', this.alpha);
+      console.log('✅ WasmFFT created successfully:', testFFT);
+      console.log('📊 FFT size:', testFFT.size);
+      
+      // Test with dummy data
+      const testInput = new Float32Array(this.fftSamples);
+      for (let i = 0; i < testInput.length; i++) {
+        testInput[i] = Math.sin(2 * Math.PI * i / testInput.length); // Simple sine wave
+      }
+      
+      const spectrum = testFFT.calculate_spectrum(testInput);
+      console.log('✅ Spectrum calculation successful, length:', spectrum.length);
+      
+      // Test db_to_color_indices function
+      const colorIndices = db_to_color_indices(spectrum, this.gainDB || 20, this.rangeDB || 80);
+      console.log('✅ Color indices calculation successful, length:', colorIndices.length);
+      
+      // Clean up test objects
+      testFFT.free();
+      console.log('🧹 WASM test complete, memory cleaned up');
+      
+    } catch (error) {
+      console.error('❌ WASM FFT test failed:', error.message);
+    }
+  }
+
   private initializeWorker() {
     // Skip worker initialization in SSR environments (Next.js server-side)
     if (typeof window === 'undefined' || typeof Worker === 'undefined') {
@@ -280,6 +311,30 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     if (!this.canvasContainer) {
       this.createCanvas()
     }
+
+    try {
+      // Try synchronous initialization first (works when WASM is inlined)
+      try {
+        const wasmModule = initSync();
+        console.log('✅ WASM module initialized synchronously:', wasmModule);
+        this.testWasmFFT();
+      } catch (syncError) {
+        console.log('⚠️ Sync init failed, trying async init...');
+        
+        // Fallback to async initialization
+        wasmInit().then(wasmModule => {
+          console.log('✅ WASM module initialized asynchronously:', wasmModule);
+          this.testWasmFFT();
+        }).catch(error => {
+          console.warn('❌ Async WASM init failed:', error.message);
+          console.log('Will use JavaScript fallback for FFT calculations');
+        });
+      }
+      
+    } catch(error) {
+      console.warn('❌ WASM FFT not available, using JavaScript fallback:', error.message);
+    }
+    
 
     // Always get fresh container reference to avoid stale references
     this.container = this.wavesurfer.getWrapper()

@@ -58,6 +58,7 @@
     "build:dev": "tsc -w --target ESNext",
     "build": "npm run clean && tsc && rollup -c",
     "build:wasm": "./build-wasm.sh",
+    "copy:wasm": "mkdir -p dist/plugins && cp pkg/wavesurfer_fft_bg.wasm dist/plugins/ && cp pkg/wavesurfer_fft.js dist/plugins/ && cp pkg/wavesurfer_fft.d.ts dist/plugins/",
     "build:all": "npm run build && npm run build:wasm",
     "prepublishOnly": "npm run build:all",
     "lint": "eslint --ext .ts src --fix",

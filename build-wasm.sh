@@ -12,4 +12,12 @@ fi
 wasm-pack build --target web --out-dir pkg --scope wavesurfer --release
 
 echo "WASM build complete!"
-echo "Files generated in pkg/" 
+echo "Files generated in pkg/"
+
+# Copy WASM files to dist directory for development server
+echo "Copying WASM files to dist directory..."
+mkdir -p dist/plugins
+cp pkg/wavesurfer_fft_bg.wasm dist/plugins/
+cp pkg/wavesurfer_fft.js dist/plugins/
+cp pkg/wavesurfer_fft.d.ts dist/plugins/
+echo "WASM files copied to dist/plugins/" 

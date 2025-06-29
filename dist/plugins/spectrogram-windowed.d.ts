@@ -91,6 +91,7 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private workerPromises;
     static create(options?: WindowedSpectrogramPluginOptions): WindowedSpectrogramPlugin;
     constructor(options: WindowedSpectrogramPluginOptions);
+    private testWasmFFT;
     private initializeWorker;
     private setupColorMap;
     onInit(): void;
