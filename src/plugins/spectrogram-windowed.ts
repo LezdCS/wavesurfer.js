@@ -134,6 +134,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   
   // FFT and processing
   private fft: FFT | null = null
+  private wasmFFT: WasmFFT | null = null
+  private isWasmAvailable: boolean = false
   private numMelFilters: number
   private numLogFilters: number
   private numBarkFilters: number
@@ -192,38 +194,9 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.createWrapper()
     this.createCanvas()
     
-    // Initialize worker if enabled
+    // Initialize worker if enabled (but prefer WASM on main thread)
     if (this.useWebWorker) {
       this.initializeWorker()
-    }
-  }
-
-  private testWasmFFT() {
-    try {
-      // Test WasmFFT creation
-      const testFFT = new WasmFFT(this.fftSamples, this.windowFunc || 'hann', this.alpha);
-      console.log('✅ WasmFFT created successfully:', testFFT);
-      console.log('📊 FFT size:', testFFT.size);
-      
-      // Test with dummy data
-      const testInput = new Float32Array(this.fftSamples);
-      for (let i = 0; i < testInput.length; i++) {
-        testInput[i] = Math.sin(2 * Math.PI * i / testInput.length); // Simple sine wave
-      }
-      
-      const spectrum = testFFT.calculate_spectrum(testInput);
-      console.log('✅ Spectrum calculation successful, length:', spectrum.length);
-      
-      // Test db_to_color_indices function
-      const colorIndices = db_to_color_indices(spectrum, this.gainDB || 20, this.rangeDB || 80);
-      console.log('✅ Color indices calculation successful, length:', colorIndices.length);
-      
-      // Clean up test objects
-      testFFT.free();
-      console.log('🧹 WASM test complete, memory cleaned up');
-      
-    } catch (error) {
-      console.error('❌ WASM FFT test failed:', error.message);
     }
   }
 
@@ -317,22 +290,24 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       try {
         const wasmModule = initSync();
         console.log('✅ WASM module initialized synchronously:', wasmModule);
-        this.testWasmFFT();
+        this.isWasmAvailable = true;
       } catch (syncError) {
         console.log('⚠️ Sync init failed, trying async init...');
         
         // Fallback to async initialization
         wasmInit().then(wasmModule => {
           console.log('✅ WASM module initialized asynchronously:', wasmModule);
-          this.testWasmFFT();
+          this.isWasmAvailable = true;
         }).catch(error => {
           console.warn('❌ Async WASM init failed:', error.message);
           console.log('Will use JavaScript fallback for FFT calculations');
+          this.isWasmAvailable = false;
         });
       }
       
     } catch(error) {
       console.warn('❌ WASM FFT not available, using JavaScript fallback:', error.message);
+      this.isWasmAvailable = false;
     }
     
 
@@ -857,6 +832,22 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     return progress
   }
 
+  /** Check if WASM FFT is being used */
+  public isUsingWasm(): boolean {
+    return this.isWasmAvailable && this.wasmFFT !== null
+  }
+
+  /** Get FFT implementation info */
+  public getFFTInfo(): { type: 'WASM' | 'JavaScript', available: boolean } {
+    if (this.isWasmAvailable && this.wasmFFT) {
+      return { type: 'WASM', available: true }
+    } else if (this.fft) {
+      return { type: 'JavaScript', available: true }
+    } else {
+      return { type: 'JavaScript', available: false }
+    }
+  }
+
   private emitProgress() {
     const progress = this.getLoadingProgress() / 100 // Convert to 0-1 range
     this.emit('progress', progress)
@@ -869,8 +860,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const sampleRate = this.buffer.sampleRate
     const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1
 
-    // Try to use web worker first
-    if (this.worker) {
+    // Use worker only for JavaScript FFT calculations
+    if (this.worker && !this.isWasmAvailable) {
       try {
         const result = await this.calculateFrequenciesWithWorker(startTime, endTime)
         const totalTime = performance.now() - calcStartTime
@@ -881,7 +872,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       }
     }
 
-    // Fallback to main thread calculation
+    // Use main thread for WASM FFT or fallback
     return this.calculateFrequenciesMainThread(startTime, endTime)
   }
 
@@ -943,7 +934,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         scale: this.scale,
         gainDB: this.gainDB,
         rangeDB: this.rangeDB,
-        splitChannels: this.options.splitChannels || false
+        splitChannels: this.options.splitChannels || false,
+        useWasm: this.isWasmAvailable
       }
     })
 
@@ -958,8 +950,19 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const endSample = Math.floor(endTime * sampleRate)
     const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1
 
-    // Initialize FFT if needed
-    if (!this.fft) {
+    // Initialize WASM FFT if available, otherwise use JS FFT
+    if (this.isWasmAvailable && !this.wasmFFT) {
+      try {
+        this.wasmFFT = new WasmFFT(this.fftSamples, this.windowFunc || 'hann', this.alpha)
+        console.log('✅ WASM FFT initialized for calculations')
+      } catch (error) {
+        console.warn('⚠️ Failed to create WASM FFT, falling back to JS:', error)
+        this.isWasmAvailable = false
+      }
+    }
+
+    // Initialize JS FFT if WASM is not available
+    if (!this.isWasmAvailable && !this.fft) {
       this.fft = new FFT(this.fftSamples, sampleRate, this.windowFunc, this.alpha)
     }
 
@@ -990,39 +993,75 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
       for (let sample = startSample; sample + this.fftSamples < endSample; sample += hopSize) {
         const segment = channelData.slice(sample, sample + this.fftSamples)
-        let spectrum = this.fft.calculateSpectrum(segment)
+        let spectrum: Float32Array
+        
+        // Use WASM FFT if available, otherwise use JS FFT
+        if (this.isWasmAvailable && this.wasmFFT) {
+          spectrum = this.wasmFFT.calculate_spectrum(segment)
+        } else if (this.fft) {
+          spectrum = this.fft.calculateSpectrum(segment)
+        } else {
+          console.error('No FFT available!')
+          return []
+        }
+        
         totalFFTs++
 
-        // Apply filter bank if needed
-        const filterBank = this.getFilterBank(sampleRate)
-        if (filterBank) {
-          spectrum = applyFilterBank(spectrum, filterBank)
+        // Apply filter bank if needed (only for JS FFT - WASM handles this internally)
+        if (!this.isWasmAvailable) {
+          const filterBank = this.getFilterBank(sampleRate)
+          if (filterBank) {
+            spectrum = applyFilterBank(spectrum, filterBank)
+          }
         }
 
         // Convert to uint8 color indices
-        const freqBins = new Uint8Array(spectrum.length)
-        const gainPlusRange = this.gainDB + this.rangeDB
+        let freqBins: Uint8Array
         
-        for (let j = 0; j < spectrum.length; j++) {
-          const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
-          const valueDB = 20 * Math.log10(magnitude)
-          
-          if (valueDB < -gainPlusRange) {
-            freqBins[j] = 0
-          } else if (valueDB > -this.gainDB) {
-            freqBins[j] = 255
-          } else {
-            freqBins[j] = Math.round(((valueDB + this.gainDB) / this.rangeDB) * 255)
+        if (this.isWasmAvailable && this.wasmFFT) {
+          // Use WASM color conversion function
+          try {
+            freqBins = db_to_color_indices(spectrum, this.gainDB || 20, this.rangeDB || 80)
+          } catch (error) {
+            console.warn('WASM color conversion failed, using JS fallback:', error)
+            // Fallback to JS conversion
+            freqBins = this.convertSpectrumToColors(spectrum)
           }
+        } else {
+          // Use JS color conversion
+          freqBins = this.convertSpectrumToColors(spectrum)
         }
+        
         channelFreq.push(freqBins)
       }
       frequencies.push(channelFreq)
     }
 
     const fftEndTime = performance.now()
+    const fftType = this.isWasmAvailable ? 'WASM' : 'JS'
+    console.log(`🔧 ${fftType} FFT calculation: ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`)
 
     return frequencies
+  }
+
+  private convertSpectrumToColors(spectrum: Float32Array): Uint8Array {
+    const freqBins = new Uint8Array(spectrum.length)
+    const gainPlusRange = this.gainDB + this.rangeDB
+    
+    for (let j = 0; j < spectrum.length; j++) {
+      const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
+      const valueDB = 20 * Math.log10(magnitude)
+      
+      if (valueDB < -gainPlusRange) {
+        freqBins[j] = 0
+      } else if (valueDB > -this.gainDB) {
+        freqBins[j] = 255
+      } else {
+        freqBins[j] = Math.round(((valueDB + this.gainDB) / this.rangeDB) * 255)
+      }
+    }
+    
+    return freqBins
   }
 
   private async renderSegment(segment: FrequencySegment) {
@@ -1309,6 +1348,17 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     
     this.clearAllSegments()
     
+    // Clean up WASM FFT
+    if (this.wasmFFT) {
+      try {
+        this.wasmFFT.free()
+        console.log('🧹 WASM FFT memory cleaned up')
+      } catch (error) {
+        console.warn('Failed to clean up WASM FFT:', error)
+      }
+      this.wasmFFT = null
+    }
+    
     // Clean up DOM elements properly
     if (this.canvasContainer) {
       this.canvasContainer.remove()
@@ -1327,6 +1377,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.container = null
     this.buffer = null
     this.fft = null
+    this.wasmFFT = null
+    this.isWasmAvailable = false
     this.isRendering = false
     this.currentPosition = 0
     this.pixelsPerSecond = 0

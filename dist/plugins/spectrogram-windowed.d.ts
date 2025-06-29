@@ -80,6 +80,8 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private isRendering;
     private renderTimeout;
     private fft;
+    private wasmFFT;
+    private isWasmAvailable;
     private numMelFilters;
     private numLogFilters;
     private numBarkFilters;
@@ -91,7 +93,6 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private workerPromises;
     static create(options?: WindowedSpectrogramPluginOptions): WindowedSpectrogramPlugin;
     constructor(options: WindowedSpectrogramPluginOptions);
-    private testWasmFFT;
     private initializeWorker;
     private setupColorMap;
     onInit(): void;
@@ -115,10 +116,18 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private _stopProgressiveLoading;
     /** Get the current loading progress as a percentage (0-100) */
     getLoadingProgress(): number;
+    /** Check if WASM FFT is being used */
+    isUsingWasm(): boolean;
+    /** Get FFT implementation info */
+    getFFTInfo(): {
+        type: 'WASM' | 'JavaScript';
+        available: boolean;
+    };
     private emitProgress;
     private calculateFrequencies;
     private calculateFrequenciesWithWorker;
     private calculateFrequenciesMainThread;
+    private convertSpectrumToColors;
     private renderSegment;
     private renderChannelToCanvas;
     private clearAllSegments;
