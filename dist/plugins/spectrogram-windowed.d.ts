@@ -81,6 +81,7 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private renderTimeout;
     private fft;
     private wasmFFT;
+    private wasmFilterBank;
     private isWasmAvailable;
     private numMelFilters;
     private numLogFilters;

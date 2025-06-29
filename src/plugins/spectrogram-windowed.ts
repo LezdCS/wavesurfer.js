@@ -9,7 +9,7 @@
 
 import BasePlugin, { type BasePluginEvents } from '../base-plugin.js'
 import createElement from '../dom.js'
-import wasmInit, { WasmFFT, db_to_color_indices, initSync } from '../../pkg/wavesurfer_fft.js'
+import wasmInit, { WasmFFT, WasmFilterBank, db_to_color_indices, initSync } from '../../pkg/wavesurfer_fft.js'
 
 // Import centralized FFT functionality
 import FFT, { 
@@ -135,6 +135,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   // FFT and processing
   private fft: FFT | null = null
   private wasmFFT: WasmFFT | null = null
+  private wasmFilterBank: WasmFilterBank | null = null
   private isWasmAvailable: boolean = false
   private numMelFilters: number
   private numLogFilters: number
@@ -954,9 +955,18 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     if (this.isWasmAvailable && !this.wasmFFT) {
       try {
         this.wasmFFT = new WasmFFT(this.fftSamples, this.windowFunc || 'hann', this.alpha)
-        console.log('✅ WASM FFT initialized for calculations')
+        // Initialize WASM filter bank if not linear scale
+        if (this.scale !== 'linear') {
+          this.wasmFilterBank = new WasmFilterBank(
+            this.fftSamples / 2, // numFilters 
+            this.fftSamples,     // fftSize
+            sampleRate,          // sampleRate
+            this.scale           // scaleType
+          )
+        }
+        console.log('✅ WASM FFT and FilterBank initialized for calculations')
       } catch (error) {
-        console.warn('⚠️ Failed to create WASM FFT, falling back to JS:', error)
+        console.warn('⚠️ Failed to create WASM FFT/FilterBank, falling back to JS:', error)
         this.isWasmAvailable = false
       }
     }
@@ -998,22 +1008,25 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         // Use WASM FFT if available, otherwise use JS FFT
         if (this.isWasmAvailable && this.wasmFFT) {
           spectrum = this.wasmFFT.calculate_spectrum(segment)
+          
+          // Apply WASM filter bank if available
+          if (this.wasmFilterBank) {
+            spectrum = this.wasmFilterBank.apply(spectrum)
+          }
         } else if (this.fft) {
           spectrum = this.fft.calculateSpectrum(segment)
+          
+          // Apply JS filter bank if needed
+          const filterBank = this.getFilterBank(sampleRate)
+          if (filterBank) {
+            spectrum = applyFilterBank(spectrum, filterBank)
+          }
         } else {
           console.error('No FFT available!')
           return []
         }
         
         totalFFTs++
-
-        // Apply filter bank if needed (only for JS FFT - WASM handles this internally)
-        if (!this.isWasmAvailable) {
-          const filterBank = this.getFilterBank(sampleRate)
-          if (filterBank) {
-            spectrum = applyFilterBank(spectrum, filterBank)
-          }
-        }
 
         // Convert to uint8 color indices
         let freqBins: Uint8Array
@@ -1359,6 +1372,17 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       this.wasmFFT = null
     }
     
+    // Clean up WASM filter bank
+    if (this.wasmFilterBank) {
+      try {
+        this.wasmFilterBank.free()
+        console.log('🧹 WASM FilterBank memory cleaned up')
+      } catch (error) {
+        console.warn('Failed to clean up WASM FilterBank:', error)
+      }
+      this.wasmFilterBank = null
+    }
+    
     // Clean up DOM elements properly
     if (this.canvasContainer) {
       this.canvasContainer.remove()
@@ -1378,6 +1402,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.buffer = null
     this.fft = null
     this.wasmFFT = null
+    this.wasmFilterBank = null
     this.isWasmAvailable = false
     this.isRendering = false
     this.currentPosition = 0
