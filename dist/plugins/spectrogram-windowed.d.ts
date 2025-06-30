@@ -117,13 +117,6 @@ declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPl
     private _stopProgressiveLoading;
     /** Get the current loading progress as a percentage (0-100) */
     getLoadingProgress(): number;
-    /** Check if WASM FFT is being used */
-    isUsingWasm(): boolean;
-    /** Get FFT implementation info */
-    getFFTInfo(): {
-        type: 'WASM' | 'JavaScript';
-        available: boolean;
-    };
     private emitProgress;
     private calculateFrequencies;
     private calculateFrequenciesWithWorker;

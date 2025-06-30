@@ -184,6 +184,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.progressiveLoading = options.progressiveLoading === true
 
     // Web worker (disabled by default in SSR environments like Next.js)
+    // When enabled, worker takes priority over WASM on main thread
     this.useWebWorker = options.useWebWorker === true && typeof window !== 'undefined'
 
     // Filter banks
@@ -833,22 +834,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     return progress
   }
 
-  /** Check if WASM FFT is being used */
-  public isUsingWasm(): boolean {
-    return this.isWasmAvailable && this.wasmFFT !== null
-  }
-
-  /** Get FFT implementation info */
-  public getFFTInfo(): { type: 'WASM' | 'JavaScript', available: boolean } {
-    if (this.isWasmAvailable && this.wasmFFT) {
-      return { type: 'WASM', available: true }
-    } else if (this.fft) {
-      return { type: 'JavaScript', available: true }
-    } else {
-      return { type: 'JavaScript', available: false }
-    }
-  }
-
   private emitProgress() {
     const progress = this.getLoadingProgress() / 100 // Convert to 0-1 range
     this.emit('progress', progress)
@@ -861,11 +846,19 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const sampleRate = this.buffer.sampleRate
     const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1
 
-    // Use worker only for JavaScript FFT calculations
-    if (this.worker && !this.isWasmAvailable) {
+    /**
+     * FFT Implementation Priority:
+     * 1. Web Worker (JavaScript FFT) - if useWebWorker=true
+     * 2. Main Thread WASM FFT - if useWebWorker=false and WASM available  
+     * 3. Main Thread JavaScript FFT - fallback
+     */
+
+    // Priority 1: Use worker if explicitly enabled (regardless of WASM availability)
+    if (this.useWebWorker && this.worker) {
       try {
         const result = await this.calculateFrequenciesWithWorker(startTime, endTime)
         const totalTime = performance.now() - calcStartTime
+        console.log(`🔧 Worker FFT calculation completed in ${(totalTime).toFixed(1)}ms`)
         return result
       } catch (error) {
         console.warn('Worker calculation failed, falling back to main thread:', error)
@@ -873,7 +866,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       }
     }
 
-    // Use main thread for WASM FFT or fallback
+    // Priority 2: Use main thread (WASM if available, otherwise JavaScript FFT)
     return this.calculateFrequenciesMainThread(startTime, endTime)
   }
 
@@ -936,7 +929,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         gainDB: this.gainDB,
         rangeDB: this.rangeDB,
         splitChannels: this.options.splitChannels || false,
-        useWasm: this.isWasmAvailable
+        useWasm: false // Worker always uses JavaScript FFT
       }
     })
 
@@ -951,8 +944,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const endSample = Math.floor(endTime * sampleRate)
     const channels = this.options.splitChannels ? this.buffer.numberOfChannels : 1
 
-    // Initialize WASM FFT if available, otherwise use JS FFT
-    if (this.isWasmAvailable && !this.wasmFFT) {
+    // Initialize WASM FFT only if worker is disabled and WASM is available
+    if (!this.useWebWorker && this.isWasmAvailable && !this.wasmFFT) {
       try {
         this.wasmFFT = new WasmFFT(this.fftSamples, this.windowFunc || 'hann', this.alpha)
         // Initialize WASM filter bank if not linear scale
@@ -964,15 +957,15 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
             this.scale           // scaleType
           )
         }
-        console.log('✅ WASM FFT and FilterBank initialized for calculations')
+        console.log('✅ WASM FFT and FilterBank initialized for main thread calculations')
       } catch (error) {
         console.warn('⚠️ Failed to create WASM FFT/FilterBank, falling back to JS:', error)
         this.isWasmAvailable = false
       }
     }
 
-    // Initialize JS FFT if WASM is not available
-    if (!this.isWasmAvailable && !this.fft) {
+    // Initialize JS FFT if WASM is not being used
+    if ((this.useWebWorker || !this.isWasmAvailable) && !this.fft) {
       this.fft = new FFT(this.fftSamples, sampleRate, this.windowFunc, this.alpha)
     }
 
@@ -1005,8 +998,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         const segment = channelData.slice(sample, sample + this.fftSamples)
         let spectrum: Float32Array
         
-        // Use WASM FFT if available, otherwise use JS FFT
-        if (this.isWasmAvailable && this.wasmFFT) {
+        // Use WASM FFT only if worker is disabled, otherwise use JS FFT
+        if (!this.useWebWorker && this.isWasmAvailable && this.wasmFFT) {
           spectrum = this.wasmFFT.calculate_spectrum(segment)
           
           // Apply WASM filter bank if available
@@ -1031,8 +1024,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         // Convert to uint8 color indices
         let freqBins: Uint8Array
         
-        if (this.isWasmAvailable && this.wasmFFT) {
-          // Use WASM color conversion function
+        if (!this.useWebWorker && this.isWasmAvailable && this.wasmFFT) {
+          // Use WASM color conversion function when WASM FFT is active
           try {
             freqBins = db_to_color_indices(spectrum, this.gainDB || 20, this.rangeDB || 80)
           } catch (error) {
@@ -1051,8 +1044,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
 
     const fftEndTime = performance.now()
-    const fftType = this.isWasmAvailable ? 'WASM' : 'JS'
-    console.log(`🔧 ${fftType} FFT calculation: ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`)
+    const fftType = (!this.useWebWorker && this.isWasmAvailable && this.wasmFFT) ? 'WASM' : 'JS'
+    console.log(`🔧 Main thread ${fftType} FFT calculation: ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`)
 
     return frequencies
   }
