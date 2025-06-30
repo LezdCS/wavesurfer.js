@@ -3,7 +3,7 @@
  * Handles FFT calculations for frequency analysis
  */
 // Import centralized FFT functionality
-import FFT, { hzToMel, melToHz, hzToLog, logToHz, hzToBark, barkToHz, hzToErb, erbToHz, createFilterBank, applyFilterBank } from '../fft.js';
+import FFT, { hzToMel, melToHz, hzToLog, logToHz, hzToBark, barkToHz, hzToErb, erbToHz, createFilterBank, applyFilterBank, } from '../fft.js';
 // Global FFT instance (reused for performance)
 let fft = null;
 // Worker message handler
@@ -15,7 +15,7 @@ self.onmessage = function (e) {
             const response = {
                 type: 'frequenciesResult',
                 id: id,
-                result: result
+                result: result,
             };
             self.postMessage(response);
         }
@@ -23,7 +23,7 @@ self.onmessage = function (e) {
             const response = {
                 type: 'frequenciesResult',
                 id: id,
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
             };
             self.postMessage(response);
         }
@@ -33,7 +33,7 @@ self.onmessage = function (e) {
  * Calculate frequency data for audio channels
  */
 function calculateFrequencies(audioChannels, options) {
-    const { startTime, endTime, sampleRate, fftSamples, windowFunc, alpha, noverlap, scale, gainDB, rangeDB, splitChannels } = options;
+    const { startTime, endTime, sampleRate, fftSamples, windowFunc, alpha, noverlap, scale, gainDB, rangeDB, splitChannels, } = options;
     const startSample = Math.floor(startTime * sampleRate);
     const endSample = Math.floor(endTime * sampleRate);
     const channels = splitChannels ? audioChannels.length : 1;

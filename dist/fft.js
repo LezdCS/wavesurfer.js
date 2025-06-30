@@ -77,7 +77,7 @@ export function scaleToHz(scale, scaleType) {
             return scale;
     }
 }
-// Filter bank functions  
+// Filter bank functions
 export function createFilterBank(numFilters, fftSamples, sampleRate, hzToScaleFunc, scaleToHzFunc) {
     const filterMin = hzToScaleFunc(0);
     const filterMax = hzToScaleFunc(sampleRate / 2);

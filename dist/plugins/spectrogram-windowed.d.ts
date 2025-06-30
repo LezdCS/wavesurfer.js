@@ -51,7 +51,7 @@ export type WindowedSpectrogramPluginOptions = {
 export type WindowedSpectrogramPluginEvents = BasePluginEvents & {
     ready: [];
     click: [relativeX: number];
-    'progress': [progress: number];
+    progress: [progress: number];
 };
 declare class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEvents, WindowedSpectrogramPluginOptions> {
     private container;

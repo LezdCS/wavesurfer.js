@@ -1,6 +1,6 @@
 /**
  * Windowed Spectrogram plugin - Optimized for very long audio files
- * 
+ *
  * Only renders frequency data in a sliding window around the current viewport,
  * keeping memory usage constant regardless of audio length.
  */
@@ -12,7 +12,7 @@ import createElement from '../dom.js'
 import wasmInit, { WasmFFT, WasmFilterBank, db_to_color_indices, initSync } from '../../pkg/wavesurfer_fft.js'
 
 // Import centralized FFT functionality
-import FFT, { 
+import FFT, {
   ERB_A,
   hzToMel,
   melToHz,
@@ -25,7 +25,7 @@ import FFT, {
   hzToScale,
   scaleToHz,
   createFilterBank,
-  applyFilterBank
+  applyFilterBank,
 } from '../fft.js'
 
 // Import the worker using rollup-plugin-web-worker-loader
@@ -88,7 +88,7 @@ export type WindowedSpectrogramPluginOptions = {
 export type WindowedSpectrogramPluginEvents = BasePluginEvents & {
   ready: []
   click: [relativeX: number]
-  'progress': [progress: number] // Progress from 0 to 1
+  progress: [progress: number] // Progress from 0 to 1
 }
 
 /**
@@ -119,7 +119,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private gainDB: WindowedSpectrogramPluginOptions['gainDB']
   private rangeDB: WindowedSpectrogramPluginOptions['rangeDB']
   private scale: WindowedSpectrogramPluginOptions['scale']
-  
+
   // Windowing properties
   private windowSize: number // seconds
   private bufferSize: number // pixels
@@ -131,7 +131,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private pixelsPerSecond = 0
   private isRendering = false
   private renderTimeout: number | null = null
-  
+
   // FFT and processing
   private fft: FFT | null = null
   private wasmFFT: WasmFFT | null = null
@@ -149,7 +149,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
   // Web worker for FFT calculations
   private worker: Worker | null = null
-  private workerPromises: Map<string, { resolve: Function, reject: Function }> = new Map()
+  private workerPromises: Map<string, { resolve: Function; reject: Function }> = new Map()
 
   static create(options?: WindowedSpectrogramPluginOptions) {
     return new WindowedSpectrogramPlugin(options || {})
@@ -163,7 +163,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     // Set up color map
     this.setupColorMap(options.colorMap)
-    
+
     // FFT and processing options
     this.fftSamples = options.fftSamples || 512
     this.height = options.height || 200
@@ -195,7 +195,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     this.createWrapper()
     this.createCanvas()
-    
+
     // Initialize worker if enabled (but prefer WASM on main thread)
     if (this.useWebWorker) {
       this.initializeWorker()
@@ -208,14 +208,14 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       console.warn('Worker not available in this environment, using main thread calculation')
       return
     }
-    
+
     try {
       // Create worker using imported worker constructor
       this.worker = new SpectrogramWorker()
-      
+
       this.worker.onmessage = (e) => {
         const { type, id, result, error } = e.data
-        
+
         if (type === 'frequenciesResult') {
           const promise = this.workerPromises.get(id)
           if (promise) {
@@ -228,22 +228,17 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
           }
         }
       }
-      
+
       this.worker.onerror = (error) => {
         console.warn('Spectrogram worker error, falling back to main thread:', error)
         // Fallback to main thread calculation
         this.worker = null
       }
-      
     } catch (error) {
       console.warn('Failed to initialize worker, falling back to main thread:', error)
       this.worker = null
     }
   }
-
-
-
-
 
   private setupColorMap(colorMap?: WindowedSpectrogramPluginOptions['colorMap']) {
     if (colorMap && typeof colorMap !== 'string') {
@@ -270,7 +265,264 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
           break
         case 'roseus':
           // Full roseus colormap
-          this.colorMap = [[0.004528, 0.004341, 0.004307, 1],[0.005625, 0.006156, 0.006010, 1],[0.006628, 0.008293, 0.008161, 1],[0.007551, 0.010738, 0.010790, 1],[0.008382, 0.013482, 0.013941, 1],[0.009111, 0.016520, 0.017662, 1],[0.009727, 0.019846, 0.022009, 1],[0.010223, 0.023452, 0.027035, 1],[0.010593, 0.027331, 0.032799, 1],[0.010833, 0.031475, 0.039361, 1],[0.010941, 0.035875, 0.046415, 1],[0.010918, 0.040520, 0.053597, 1],[0.010768, 0.045158, 0.060914, 1],[0.010492, 0.049708, 0.068367, 1],[0.010098, 0.054171, 0.075954, 1],[0.009594, 0.058549, 0.083672, 1],[0.008989, 0.062840, 0.091521, 1],[0.008297, 0.067046, 0.099499, 1],[0.007530, 0.071165, 0.107603, 1],[0.006704, 0.075196, 0.115830, 1],[0.005838, 0.079140, 0.124178, 1],[0.004949, 0.082994, 0.132643, 1],[0.004062, 0.086758, 0.141223, 1],[0.003198, 0.090430, 0.149913, 1],[0.002382, 0.094010, 0.158711, 1],[0.001643, 0.097494, 0.167612, 1],[0.001009, 0.100883, 0.176612, 1],[0.000514, 0.104174, 0.185704, 1],[0.000187, 0.107366, 0.194886, 1],[0.000066, 0.110457, 0.204151, 1],[0.000186, 0.113445, 0.213496, 1],[0.000587, 0.116329, 0.222914, 1],[0.001309, 0.119106, 0.232397, 1],[0.002394, 0.121776, 0.241942, 1],[0.003886, 0.124336, 0.251542, 1],[0.005831, 0.126784, 0.261189, 1],[0.008276, 0.129120, 0.270876, 1],[0.011268, 0.131342, 0.280598, 1],[0.014859, 0.133447, 0.290345, 1],[0.019100, 0.135435, 0.300111, 1],[0.024043, 0.137305, 0.309888, 1],[0.029742, 0.139054, 0.319669, 1],[0.036252, 0.140683, 0.329441, 1],[0.043507, 0.142189, 0.339203, 1],[0.050922, 0.143571, 0.348942, 1],[0.058432, 0.144831, 0.358649, 1],[0.066041, 0.145965, 0.368319, 1],[0.073744, 0.146974, 0.377938, 1],[0.081541, 0.147858, 0.387501, 1],[0.089431, 0.148616, 0.396998, 1],[0.097411, 0.149248, 0.406419, 1],[0.105479, 0.149754, 0.415755, 1],[0.113634, 0.150134, 0.424998, 1],[0.121873, 0.150389, 0.434139, 1],[0.130192, 0.150521, 0.443167, 1],[0.138591, 0.150528, 0.452075, 1],[0.147065, 0.150413, 0.460852, 1],[0.155614, 0.150175, 0.469493, 1],[0.164232, 0.149818, 0.477985, 1],[0.172917, 0.149343, 0.486322, 1],[0.181666, 0.148751, 0.494494, 1],[0.190476, 0.148046, 0.502493, 1],[0.199344, 0.147229, 0.510313, 1],[0.208267, 0.146302, 0.517944, 1],[0.217242, 0.145267, 0.525380, 1],[0.226264, 0.144131, 0.532613, 1],[0.235331, 0.142894, 0.539635, 1],[0.244440, 0.141559, 0.546442, 1],[0.253587, 0.140131, 0.553026, 1],[0.262769, 0.138615, 0.559381, 1],[0.271981, 0.137016, 0.565500, 1],[0.281222, 0.135335, 0.571381, 1],[0.290487, 0.133581, 0.577017, 1],[0.299774, 0.131757, 0.582404, 1],[0.309080, 0.129867, 0.587538, 1],[0.318399, 0.127920, 0.592415, 1],[0.327730, 0.125921, 0.597032, 1],[0.337069, 0.123877, 0.601385, 1],[0.346413, 0.121793, 0.605474, 1],[0.355758, 0.119678, 0.609295, 1],[0.365102, 0.117540, 0.612846, 1],[0.374443, 0.115386, 0.616127, 1],[0.383774, 0.113226, 0.619138, 1],[0.393096, 0.111066, 0.621876, 1],[0.402404, 0.108918, 0.624343, 1],[0.411694, 0.106794, 0.626540, 1],[0.420967, 0.104698, 0.628466, 1],[0.430217, 0.102645, 0.630123, 1],[0.439442, 0.100647, 0.631513, 1],[0.448637, 0.098717, 0.632638, 1],[0.457805, 0.096861, 0.633499, 1],[0.466940, 0.095095, 0.634100, 1],[0.476040, 0.093433, 0.634443, 1],[0.485102, 0.091885, 0.634532, 1],[0.494125, 0.090466, 0.634370, 1],[0.503104, 0.089190, 0.633962, 1],[0.512041, 0.088067, 0.633311, 1],[0.520931, 0.087108, 0.632420, 1],[0.529773, 0.086329, 0.631297, 1],[0.538564, 0.085738, 0.629944, 1],[0.547302, 0.085346, 0.628367, 1],[0.555986, 0.085162, 0.626572, 1],[0.564615, 0.085190, 0.624563, 1],[0.573187, 0.085439, 0.622345, 1],[0.581698, 0.085913, 0.619926, 1],[0.590149, 0.086615, 0.617311, 1],[0.598538, 0.087543, 0.614503, 1],[0.606862, 0.088700, 0.611511, 1],[0.615120, 0.090084, 0.608343, 1],[0.623312, 0.091690, 0.605001, 1],[0.631438, 0.093511, 0.601489, 1],[0.639492, 0.095546, 0.597821, 1],[0.647476, 0.097787, 0.593999, 1],[0.655389, 0.100226, 0.590028, 1],[0.663230, 0.102856, 0.585914, 1],[0.670995, 0.105669, 0.581667, 1],[0.678686, 0.108658, 0.577291, 1],[0.686302, 0.111813, 0.572790, 1],[0.693840, 0.115129, 0.568175, 1],[0.701300, 0.118597, 0.563449, 1],[0.708682, 0.122209, 0.558616, 1],[0.715984, 0.125959, 0.553687, 1],[0.723206, 0.129840, 0.548666, 1],[0.730346, 0.133846, 0.543558, 1],[0.737406, 0.137970, 0.538366, 1],[0.744382, 0.142209, 0.533101, 1],[0.751274, 0.146556, 0.527767, 1],[0.758082, 0.151008, 0.522369, 1],[0.764805, 0.155559, 0.516912, 1],[0.771443, 0.160206, 0.511402, 1],[0.777995, 0.164946, 0.505845, 1],[0.784459, 0.169774, 0.500246, 1],[0.790836, 0.174689, 0.494607, 1],[0.797125, 0.179688, 0.488935, 1],[0.803325, 0.184767, 0.483238, 1],[0.809435, 0.189925, 0.477518, 1],[0.815455, 0.195160, 0.471781, 1],[0.821384, 0.200471, 0.466028, 1],[0.827222, 0.205854, 0.460267, 1],[0.832968, 0.211308, 0.454505, 1],[0.838621, 0.216834, 0.448738, 1],[0.844181, 0.222428, 0.442979, 1],[0.849647, 0.228090, 0.437230, 1],[0.855019, 0.233819, 0.431491, 1],[0.860295, 0.239613, 0.425771, 1],[0.865475, 0.245471, 0.420074, 1],[0.870558, 0.251393, 0.414403, 1],[0.875545, 0.257380, 0.408759, 1],[0.880433, 0.263427, 0.403152, 1],[0.885223, 0.269535, 0.397585, 1],[0.889913, 0.275705, 0.392058, 1],[0.894503, 0.281934, 0.386578, 1],[0.898993, 0.288222, 0.381152, 1],[0.903381, 0.294569, 0.375781, 1],[0.907667, 0.300974, 0.370469, 1],[0.911849, 0.307435, 0.365223, 1],[0.915928, 0.313953, 0.360048, 1],[0.919902, 0.320527, 0.354948, 1],[0.923771, 0.327155, 0.349928, 1],[0.927533, 0.333838, 0.344994, 1],[0.931188, 0.340576, 0.340149, 1],[0.934736, 0.347366, 0.335403, 1],[0.938175, 0.354207, 0.330762, 1],[0.941504, 0.361101, 0.326229, 1],[0.944723, 0.368045, 0.321814, 1],[0.947831, 0.375039, 0.317523, 1],[0.950826, 0.382083, 0.313364, 1],[0.953709, 0.389175, 0.309345, 1],[0.956478, 0.396314, 0.305477, 1],[0.959133, 0.403499, 0.301766, 1],[0.961671, 0.410731, 0.298221, 1],[0.964093, 0.418008, 0.294853, 1],[0.966399, 0.425327, 0.291676, 1],[0.968586, 0.432690, 0.288696, 1],[0.970654, 0.440095, 0.285926, 1],[0.972603, 0.447540, 0.283380, 1],[0.974431, 0.455025, 0.281067, 1],[0.976139, 0.462547, 0.279003, 1],[0.977725, 0.470107, 0.277198, 1],[0.979188, 0.477703, 0.275666, 1],[0.980529, 0.485332, 0.274422, 1],[0.981747, 0.492995, 0.273476, 1],[0.982840, 0.500690, 0.272842, 1],[0.983808, 0.508415, 0.272532, 1],[0.984653, 0.516168, 0.272560, 1],[0.985373, 0.523948, 0.272937, 1],[0.985966, 0.531754, 0.273673, 1],[0.986436, 0.539582, 0.274779, 1],[0.986780, 0.547434, 0.276264, 1],[0.986998, 0.555305, 0.278135, 1],[0.987091, 0.563195, 0.280401, 1],[0.987061, 0.571100, 0.283066, 1],[0.986907, 0.579019, 0.286137, 1],[0.986629, 0.586950, 0.289615, 1],[0.986229, 0.594891, 0.293503, 1],[0.985709, 0.602839, 0.297802, 1],[0.985069, 0.610792, 0.302512, 1],[0.984310, 0.618748, 0.307632, 1],[0.983435, 0.626704, 0.313159, 1],[0.982445, 0.634657, 0.319089, 1],[0.981341, 0.642606, 0.325420, 1],[0.980130, 0.650546, 0.332144, 1],[0.978812, 0.658475, 0.339257, 1],[0.977392, 0.666391, 0.346753, 1],[0.975870, 0.674290, 0.354625, 1],[0.974252, 0.682170, 0.362865, 1],[0.972545, 0.690026, 0.371466, 1],[0.970750, 0.697856, 0.380419, 1],[0.968873, 0.705658, 0.389718, 1],[0.966921, 0.713426, 0.399353, 1],[0.964901, 0.721157, 0.409313, 1],[0.962815, 0.728851, 0.419594, 1],[0.960677, 0.736500, 0.430181, 1],[0.958490, 0.744103, 0.441070, 1],[0.956263, 0.751656, 0.452248, 1],[0.954009, 0.759153, 0.463702, 1],[0.951732, 0.766595, 0.475429, 1],[0.949445, 0.773974, 0.487414, 1],[0.947158, 0.781289, 0.499647, 1],[0.944885, 0.788535, 0.512116, 1],[0.942634, 0.795709, 0.524811, 1],[0.940423, 0.802807, 0.537717, 1],[0.938261, 0.809825, 0.550825, 1],[0.936163, 0.816760, 0.564121, 1],[0.934146, 0.823608, 0.577591, 1],[0.932224, 0.830366, 0.591220, 1],[0.930412, 0.837031, 0.604997, 1],[0.928727, 0.843599, 0.618904, 1],[0.927187, 0.850066, 0.632926, 1],[0.925809, 0.856432, 0.647047, 1],[0.924610, 0.862691, 0.661249, 1],[0.923607, 0.868843, 0.675517, 1],[0.922820, 0.874884, 0.689832, 1],[0.922265, 0.880812, 0.704174, 1],[0.921962, 0.886626, 0.718523, 1],[0.921930, 0.892323, 0.732859, 1],[0.922183, 0.897903, 0.747163, 1],[0.922741, 0.903364, 0.761410, 1],[0.923620, 0.908706, 0.775580, 1],[0.924837, 0.913928, 0.789648, 1],[0.926405, 0.919031, 0.803590, 1],[0.928340, 0.924015, 0.817381, 1],[0.930655, 0.928881, 0.830995, 1],[0.933360, 0.933631, 0.844405, 1],[0.936466, 0.938267, 0.857583, 1],[0.939982, 0.942791, 0.870499, 1],[0.943914, 0.947207, 0.883122, 1],[0.948267, 0.951519, 0.895421, 1],[0.953044, 0.955732, 0.907359, 1],[0.958246, 0.959852, 0.918901, 1],[0.963869, 0.963887, 0.930004, 1],[0.969909, 0.967845, 0.940623, 1],[0.976355, 0.971737, 0.950704, 1],[0.983195, 0.975580, 0.960181, 1],[0.990402, 0.979395, 0.968966, 1],[0.997930, 0.983217, 0.976920, 1]]
+          this.colorMap = [
+            [0.004528, 0.004341, 0.004307, 1],
+            [0.005625, 0.006156, 0.00601, 1],
+            [0.006628, 0.008293, 0.008161, 1],
+            [0.007551, 0.010738, 0.01079, 1],
+            [0.008382, 0.013482, 0.013941, 1],
+            [0.009111, 0.01652, 0.017662, 1],
+            [0.009727, 0.019846, 0.022009, 1],
+            [0.010223, 0.023452, 0.027035, 1],
+            [0.010593, 0.027331, 0.032799, 1],
+            [0.010833, 0.031475, 0.039361, 1],
+            [0.010941, 0.035875, 0.046415, 1],
+            [0.010918, 0.04052, 0.053597, 1],
+            [0.010768, 0.045158, 0.060914, 1],
+            [0.010492, 0.049708, 0.068367, 1],
+            [0.010098, 0.054171, 0.075954, 1],
+            [0.009594, 0.058549, 0.083672, 1],
+            [0.008989, 0.06284, 0.091521, 1],
+            [0.008297, 0.067046, 0.099499, 1],
+            [0.00753, 0.071165, 0.107603, 1],
+            [0.006704, 0.075196, 0.11583, 1],
+            [0.005838, 0.07914, 0.124178, 1],
+            [0.004949, 0.082994, 0.132643, 1],
+            [0.004062, 0.086758, 0.141223, 1],
+            [0.003198, 0.09043, 0.149913, 1],
+            [0.002382, 0.09401, 0.158711, 1],
+            [0.001643, 0.097494, 0.167612, 1],
+            [0.001009, 0.100883, 0.176612, 1],
+            [0.000514, 0.104174, 0.185704, 1],
+            [0.000187, 0.107366, 0.194886, 1],
+            [0.000066, 0.110457, 0.204151, 1],
+            [0.000186, 0.113445, 0.213496, 1],
+            [0.000587, 0.116329, 0.222914, 1],
+            [0.001309, 0.119106, 0.232397, 1],
+            [0.002394, 0.121776, 0.241942, 1],
+            [0.003886, 0.124336, 0.251542, 1],
+            [0.005831, 0.126784, 0.261189, 1],
+            [0.008276, 0.12912, 0.270876, 1],
+            [0.011268, 0.131342, 0.280598, 1],
+            [0.014859, 0.133447, 0.290345, 1],
+            [0.0191, 0.135435, 0.300111, 1],
+            [0.024043, 0.137305, 0.309888, 1],
+            [0.029742, 0.139054, 0.319669, 1],
+            [0.036252, 0.140683, 0.329441, 1],
+            [0.043507, 0.142189, 0.339203, 1],
+            [0.050922, 0.143571, 0.348942, 1],
+            [0.058432, 0.144831, 0.358649, 1],
+            [0.066041, 0.145965, 0.368319, 1],
+            [0.073744, 0.146974, 0.377938, 1],
+            [0.081541, 0.147858, 0.387501, 1],
+            [0.089431, 0.148616, 0.396998, 1],
+            [0.097411, 0.149248, 0.406419, 1],
+            [0.105479, 0.149754, 0.415755, 1],
+            [0.113634, 0.150134, 0.424998, 1],
+            [0.121873, 0.150389, 0.434139, 1],
+            [0.130192, 0.150521, 0.443167, 1],
+            [0.138591, 0.150528, 0.452075, 1],
+            [0.147065, 0.150413, 0.460852, 1],
+            [0.155614, 0.150175, 0.469493, 1],
+            [0.164232, 0.149818, 0.477985, 1],
+            [0.172917, 0.149343, 0.486322, 1],
+            [0.181666, 0.148751, 0.494494, 1],
+            [0.190476, 0.148046, 0.502493, 1],
+            [0.199344, 0.147229, 0.510313, 1],
+            [0.208267, 0.146302, 0.517944, 1],
+            [0.217242, 0.145267, 0.52538, 1],
+            [0.226264, 0.144131, 0.532613, 1],
+            [0.235331, 0.142894, 0.539635, 1],
+            [0.24444, 0.141559, 0.546442, 1],
+            [0.253587, 0.140131, 0.553026, 1],
+            [0.262769, 0.138615, 0.559381, 1],
+            [0.271981, 0.137016, 0.5655, 1],
+            [0.281222, 0.135335, 0.571381, 1],
+            [0.290487, 0.133581, 0.577017, 1],
+            [0.299774, 0.131757, 0.582404, 1],
+            [0.30908, 0.129867, 0.587538, 1],
+            [0.318399, 0.12792, 0.592415, 1],
+            [0.32773, 0.125921, 0.597032, 1],
+            [0.337069, 0.123877, 0.601385, 1],
+            [0.346413, 0.121793, 0.605474, 1],
+            [0.355758, 0.119678, 0.609295, 1],
+            [0.365102, 0.11754, 0.612846, 1],
+            [0.374443, 0.115386, 0.616127, 1],
+            [0.383774, 0.113226, 0.619138, 1],
+            [0.393096, 0.111066, 0.621876, 1],
+            [0.402404, 0.108918, 0.624343, 1],
+            [0.411694, 0.106794, 0.62654, 1],
+            [0.420967, 0.104698, 0.628466, 1],
+            [0.430217, 0.102645, 0.630123, 1],
+            [0.439442, 0.100647, 0.631513, 1],
+            [0.448637, 0.098717, 0.632638, 1],
+            [0.457805, 0.096861, 0.633499, 1],
+            [0.46694, 0.095095, 0.6341, 1],
+            [0.47604, 0.093433, 0.634443, 1],
+            [0.485102, 0.091885, 0.634532, 1],
+            [0.494125, 0.090466, 0.63437, 1],
+            [0.503104, 0.08919, 0.633962, 1],
+            [0.512041, 0.088067, 0.633311, 1],
+            [0.520931, 0.087108, 0.63242, 1],
+            [0.529773, 0.086329, 0.631297, 1],
+            [0.538564, 0.085738, 0.629944, 1],
+            [0.547302, 0.085346, 0.628367, 1],
+            [0.555986, 0.085162, 0.626572, 1],
+            [0.564615, 0.08519, 0.624563, 1],
+            [0.573187, 0.085439, 0.622345, 1],
+            [0.581698, 0.085913, 0.619926, 1],
+            [0.590149, 0.086615, 0.617311, 1],
+            [0.598538, 0.087543, 0.614503, 1],
+            [0.606862, 0.0887, 0.611511, 1],
+            [0.61512, 0.090084, 0.608343, 1],
+            [0.623312, 0.09169, 0.605001, 1],
+            [0.631438, 0.093511, 0.601489, 1],
+            [0.639492, 0.095546, 0.597821, 1],
+            [0.647476, 0.097787, 0.593999, 1],
+            [0.655389, 0.100226, 0.590028, 1],
+            [0.66323, 0.102856, 0.585914, 1],
+            [0.670995, 0.105669, 0.581667, 1],
+            [0.678686, 0.108658, 0.577291, 1],
+            [0.686302, 0.111813, 0.57279, 1],
+            [0.69384, 0.115129, 0.568175, 1],
+            [0.7013, 0.118597, 0.563449, 1],
+            [0.708682, 0.122209, 0.558616, 1],
+            [0.715984, 0.125959, 0.553687, 1],
+            [0.723206, 0.12984, 0.548666, 1],
+            [0.730346, 0.133846, 0.543558, 1],
+            [0.737406, 0.13797, 0.538366, 1],
+            [0.744382, 0.142209, 0.533101, 1],
+            [0.751274, 0.146556, 0.527767, 1],
+            [0.758082, 0.151008, 0.522369, 1],
+            [0.764805, 0.155559, 0.516912, 1],
+            [0.771443, 0.160206, 0.511402, 1],
+            [0.777995, 0.164946, 0.505845, 1],
+            [0.784459, 0.169774, 0.500246, 1],
+            [0.790836, 0.174689, 0.494607, 1],
+            [0.797125, 0.179688, 0.488935, 1],
+            [0.803325, 0.184767, 0.483238, 1],
+            [0.809435, 0.189925, 0.477518, 1],
+            [0.815455, 0.19516, 0.471781, 1],
+            [0.821384, 0.200471, 0.466028, 1],
+            [0.827222, 0.205854, 0.460267, 1],
+            [0.832968, 0.211308, 0.454505, 1],
+            [0.838621, 0.216834, 0.448738, 1],
+            [0.844181, 0.222428, 0.442979, 1],
+            [0.849647, 0.22809, 0.43723, 1],
+            [0.855019, 0.233819, 0.431491, 1],
+            [0.860295, 0.239613, 0.425771, 1],
+            [0.865475, 0.245471, 0.420074, 1],
+            [0.870558, 0.251393, 0.414403, 1],
+            [0.875545, 0.25738, 0.408759, 1],
+            [0.880433, 0.263427, 0.403152, 1],
+            [0.885223, 0.269535, 0.397585, 1],
+            [0.889913, 0.275705, 0.392058, 1],
+            [0.894503, 0.281934, 0.386578, 1],
+            [0.898993, 0.288222, 0.381152, 1],
+            [0.903381, 0.294569, 0.375781, 1],
+            [0.907667, 0.300974, 0.370469, 1],
+            [0.911849, 0.307435, 0.365223, 1],
+            [0.915928, 0.313953, 0.360048, 1],
+            [0.919902, 0.320527, 0.354948, 1],
+            [0.923771, 0.327155, 0.349928, 1],
+            [0.927533, 0.333838, 0.344994, 1],
+            [0.931188, 0.340576, 0.340149, 1],
+            [0.934736, 0.347366, 0.335403, 1],
+            [0.938175, 0.354207, 0.330762, 1],
+            [0.941504, 0.361101, 0.326229, 1],
+            [0.944723, 0.368045, 0.321814, 1],
+            [0.947831, 0.375039, 0.317523, 1],
+            [0.950826, 0.382083, 0.313364, 1],
+            [0.953709, 0.389175, 0.309345, 1],
+            [0.956478, 0.396314, 0.305477, 1],
+            [0.959133, 0.403499, 0.301766, 1],
+            [0.961671, 0.410731, 0.298221, 1],
+            [0.964093, 0.418008, 0.294853, 1],
+            [0.966399, 0.425327, 0.291676, 1],
+            [0.968586, 0.43269, 0.288696, 1],
+            [0.970654, 0.440095, 0.285926, 1],
+            [0.972603, 0.44754, 0.28338, 1],
+            [0.974431, 0.455025, 0.281067, 1],
+            [0.976139, 0.462547, 0.279003, 1],
+            [0.977725, 0.470107, 0.277198, 1],
+            [0.979188, 0.477703, 0.275666, 1],
+            [0.980529, 0.485332, 0.274422, 1],
+            [0.981747, 0.492995, 0.273476, 1],
+            [0.98284, 0.50069, 0.272842, 1],
+            [0.983808, 0.508415, 0.272532, 1],
+            [0.984653, 0.516168, 0.27256, 1],
+            [0.985373, 0.523948, 0.272937, 1],
+            [0.985966, 0.531754, 0.273673, 1],
+            [0.986436, 0.539582, 0.274779, 1],
+            [0.98678, 0.547434, 0.276264, 1],
+            [0.986998, 0.555305, 0.278135, 1],
+            [0.987091, 0.563195, 0.280401, 1],
+            [0.987061, 0.5711, 0.283066, 1],
+            [0.986907, 0.579019, 0.286137, 1],
+            [0.986629, 0.58695, 0.289615, 1],
+            [0.986229, 0.594891, 0.293503, 1],
+            [0.985709, 0.602839, 0.297802, 1],
+            [0.985069, 0.610792, 0.302512, 1],
+            [0.98431, 0.618748, 0.307632, 1],
+            [0.983435, 0.626704, 0.313159, 1],
+            [0.982445, 0.634657, 0.319089, 1],
+            [0.981341, 0.642606, 0.32542, 1],
+            [0.98013, 0.650546, 0.332144, 1],
+            [0.978812, 0.658475, 0.339257, 1],
+            [0.977392, 0.666391, 0.346753, 1],
+            [0.97587, 0.67429, 0.354625, 1],
+            [0.974252, 0.68217, 0.362865, 1],
+            [0.972545, 0.690026, 0.371466, 1],
+            [0.97075, 0.697856, 0.380419, 1],
+            [0.968873, 0.705658, 0.389718, 1],
+            [0.966921, 0.713426, 0.399353, 1],
+            [0.964901, 0.721157, 0.409313, 1],
+            [0.962815, 0.728851, 0.419594, 1],
+            [0.960677, 0.7365, 0.430181, 1],
+            [0.95849, 0.744103, 0.44107, 1],
+            [0.956263, 0.751656, 0.452248, 1],
+            [0.954009, 0.759153, 0.463702, 1],
+            [0.951732, 0.766595, 0.475429, 1],
+            [0.949445, 0.773974, 0.487414, 1],
+            [0.947158, 0.781289, 0.499647, 1],
+            [0.944885, 0.788535, 0.512116, 1],
+            [0.942634, 0.795709, 0.524811, 1],
+            [0.940423, 0.802807, 0.537717, 1],
+            [0.938261, 0.809825, 0.550825, 1],
+            [0.936163, 0.81676, 0.564121, 1],
+            [0.934146, 0.823608, 0.577591, 1],
+            [0.932224, 0.830366, 0.59122, 1],
+            [0.930412, 0.837031, 0.604997, 1],
+            [0.928727, 0.843599, 0.618904, 1],
+            [0.927187, 0.850066, 0.632926, 1],
+            [0.925809, 0.856432, 0.647047, 1],
+            [0.92461, 0.862691, 0.661249, 1],
+            [0.923607, 0.868843, 0.675517, 1],
+            [0.92282, 0.874884, 0.689832, 1],
+            [0.922265, 0.880812, 0.704174, 1],
+            [0.921962, 0.886626, 0.718523, 1],
+            [0.92193, 0.892323, 0.732859, 1],
+            [0.922183, 0.897903, 0.747163, 1],
+            [0.922741, 0.903364, 0.76141, 1],
+            [0.92362, 0.908706, 0.77558, 1],
+            [0.924837, 0.913928, 0.789648, 1],
+            [0.926405, 0.919031, 0.80359, 1],
+            [0.92834, 0.924015, 0.817381, 1],
+            [0.930655, 0.928881, 0.830995, 1],
+            [0.93336, 0.933631, 0.844405, 1],
+            [0.936466, 0.938267, 0.857583, 1],
+            [0.939982, 0.942791, 0.870499, 1],
+            [0.943914, 0.947207, 0.883122, 1],
+            [0.948267, 0.951519, 0.895421, 1],
+            [0.953044, 0.955732, 0.907359, 1],
+            [0.958246, 0.959852, 0.918901, 1],
+            [0.963869, 0.963887, 0.930004, 1],
+            [0.969909, 0.967845, 0.940623, 1],
+            [0.976355, 0.971737, 0.950704, 1],
+            [0.983195, 0.97558, 0.960181, 1],
+            [0.990402, 0.979395, 0.968966, 1],
+            [0.99793, 0.983217, 0.97692, 1],
+          ]
           break
         default:
           throw Error("No such colormap '" + mapType + "'")
@@ -289,29 +541,22 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     try {
       // Try synchronous initialization first (works when WASM is inlined)
-      try {
-        const wasmModule = initSync();
-        console.log('✅ WASM module initialized synchronously:', wasmModule);
-        this.isWasmAvailable = true;
-      } catch (syncError) {
-        console.log('⚠️ Sync init failed, trying async init...');
-        
-        // Fallback to async initialization
-        wasmInit().then(wasmModule => {
-          console.log('✅ WASM module initialized asynchronously:', wasmModule);
-          this.isWasmAvailable = true;
-        }).catch(error => {
-          console.warn('❌ Async WASM init failed:', error.message);
-          console.log('Will use JavaScript fallback for FFT calculations');
-          this.isWasmAvailable = false;
-        });
-      }
-      
-    } catch(error) {
-      console.warn('❌ WASM FFT not available, using JavaScript fallback:', error.message);
-      this.isWasmAvailable = false;
+
+      // Fallback to async initialization
+      wasmInit()
+        .then((wasmModule) => {
+          console.log('✅ WASM module initialized asynchronously:', wasmModule)
+          this.isWasmAvailable = true
+        })
+        .catch((error) => {
+          console.warn('❌ Async WASM init failed:', error.message)
+          console.log('Will use JavaScript fallback for FFT calculations')
+          this.isWasmAvailable = false
+        })
+    } catch (error) {
+      console.warn('❌ WASM FFT not available, using JavaScript fallback:', error.message)
+      this.isWasmAvailable = false
     }
-    
 
     // Always get fresh container reference to avoid stale references
     this.container = this.wavesurfer.getWrapper()
@@ -330,26 +575,28 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.subscriptions.push(
       this.wavesurfer.on('timeupdate', (currentTime) => {
         this.updatePosition(currentTime)
-      })
+      }),
     )
 
     // Listen for scroll events
     this.subscriptions.push(
       this.wavesurfer.on('scroll', () => {
         this.handleScroll()
-      })
+      }),
     )
 
     // Listen for zoom changes
     this.subscriptions.push(this.wavesurfer.on('redraw', () => this.handleRedraw()))
 
     // Listen for audio data ready
-    this.subscriptions.push(this.wavesurfer.on('ready', () => {
-      const decodedData = this.wavesurfer.getDecodedData()
-      if (decodedData) {
-        this.render(decodedData)
-      }
-    }))
+    this.subscriptions.push(
+      this.wavesurfer.on('ready', () => {
+        const decodedData = this.wavesurfer.getDecodedData()
+        if (decodedData) {
+          this.render(decodedData)
+        }
+      }),
+    )
 
     // Trigger initial render after re-initialization
     // This ensures the spectrogram appears even if no redraw event is fired
@@ -411,22 +658,21 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private handleRedraw() {
     const oldPixelsPerSecond = this.pixelsPerSecond
     this.pixelsPerSecond = this.getPixelsPerSecond()
-    
+
     // Only update canvas positions if zoom changed, keep frequency data!
     if (oldPixelsPerSecond !== this.pixelsPerSecond && this.segments.size > 0) {
       this.updateSegmentPositions(oldPixelsPerSecond, this.pixelsPerSecond)
     }
-    
+
     this.scheduleRender()
   }
 
   private updateSegmentPositions(oldPxPerSec: number, newPxPerSec: number) {
-    
     for (const segment of this.segments.values()) {
       // Update pixel positions based on new zoom level
       segment.startPixel = segment.startTime * newPxPerSec
       segment.endPixel = segment.endTime * newPxPerSec
-      
+
       // Update canvas positioning and size WITHOUT recalculating frequencies
       if (segment.canvas) {
         const segmentWidth = segment.endPixel - segment.startPixel
@@ -434,7 +680,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         segment.canvas.style.width = `${segmentWidth}px`
       }
     }
-    
+
     // Schedule a gentle re-render of visible segments only if zoom changed significantly
     const zoomRatio = newPxPerSec / oldPxPerSec
     if (zoomRatio < 0.5 || zoomRatio > 2.0) {
@@ -447,7 +693,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     if (this.qualityUpdateTimeout) {
       clearTimeout(this.qualityUpdateTimeout)
     }
-    
+
     this.qualityUpdateTimeout = window.setTimeout(() => {
       this.updateVisibleSegmentQuality()
     }, 500) // Wait 500ms after zoom stops
@@ -457,36 +703,33 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
   private async updateVisibleSegmentQuality() {
     if (!this.buffer) return
-    
+
     const wrapper = this.wavesurfer?.getWrapper()
     if (!wrapper) return
-    
+
     // Get current viewport
     const scrollLeft = this.getScrollLeft(wrapper)
     const viewportWidth = this.getViewportWidth(wrapper)
     const pixelsPerSec = this.getPixelsPerSecond()
-    
+
     const visibleStartTime = scrollLeft / pixelsPerSec
     const visibleEndTime = (scrollLeft + viewportWidth) / pixelsPerSec
-    
-    
+
     // Find segments that overlap with visible area
-    const visibleSegments = Array.from(this.segments.values()).filter(segment => 
-      segment.startTime < visibleEndTime && segment.endTime > visibleStartTime
+    const visibleSegments = Array.from(this.segments.values()).filter(
+      (segment) => segment.startTime < visibleEndTime && segment.endTime > visibleStartTime,
     )
-    
+
     if (visibleSegments.length === 0) {
       return
     }
-    
-    
+
     // Re-render only the visible segments with current zoom level
     for (const segment of visibleSegments) {
       if (segment.canvas) {
         await this.renderSegment(segment)
       }
     }
-    
   }
 
   private getScrollLeft(wrapper: HTMLElement): number {
@@ -497,7 +740,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     if (document.body.scrollLeft) return document.body.scrollLeft
     if (window.scrollX) return window.scrollX
     if (window.pageXOffset) return window.pageXOffset
-    
+
     // Look for scrollable ancestors
     let element = wrapper.parentElement
     while (element) {
@@ -507,7 +750,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       }
       element = element.parentElement
     }
-    
+
     return 0
   }
 
@@ -515,7 +758,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const wrapperWidth = wrapper.offsetWidth || wrapper.clientWidth
     const parentWidth = wrapper.parentElement?.offsetWidth || wrapper.parentElement?.clientWidth
     const windowWidth = window.innerWidth
-    
+
     // Use the smallest reasonable width
     if (parentWidth && parentWidth < wrapperWidth) return parentWidth
     return Math.min(wrapperWidth || 800, windowWidth * 0.8)
@@ -523,10 +766,10 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
   private handleScroll() {
     const wrapper = this.wavesurfer?.getWrapper()
-    
+
     // Use the same scroll detection logic as renderVisibleWindow
     let scrollLeft = 0
-    
+
     if (wrapper?.scrollLeft) {
       scrollLeft = wrapper.scrollLeft
     } else if (wrapper?.parentElement?.scrollLeft) {
@@ -549,10 +792,10 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         element = element.parentElement
       }
     }
-    
+
     const pixelsPerSec = this.getPixelsPerSecond()
     const currentViewTime = scrollLeft / pixelsPerSec
-    
+
     this.scheduleRender()
   }
 
@@ -590,7 +833,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       // Reasonable buffer time based on visible duration
       const visibleDuration = visibleEndTime - visibleStartTime
       let bufferTimeSeconds = Math.min(2, visibleDuration * 0.5) // Buffer is at most half the visible duration or 2s
-      
+
       if (visibleDuration > 30) {
         console.warn(`⚠️ Large visible duration: ${visibleDuration.toFixed(1)}s - limiting buffer`)
         bufferTimeSeconds = 1 // Smaller buffer for very zoomed out views
@@ -603,7 +846,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       await this.generateSegments(windowStartTime, windowEndTime)
 
       // Don't clean up old segments - keep them all in memory for performance
-
     } finally {
       this.isRendering = false
     }
@@ -617,14 +859,12 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const totalAudioDuration = this.buffer.duration
 
     // Progressive loading always uses fixed segment sizes, never fill container mode
-    const isProgressiveLoadCall = this.isProgressiveLoading && 
-      (endTime - startTime) <= 35 // Progressive loading uses ~30s segments
+    const isProgressiveLoadCall = this.isProgressiveLoading && endTime - startTime <= 35 // Progressive loading uses ~30s segments
 
     // Calculate if this is a short audio that should fill the container
     const totalAudioPixelWidth = totalAudioDuration * pixelsPerSec
-    const shouldFillContainer = !isProgressiveLoadCall && 
-      totalAudioPixelWidth <= containerWidth && 
-      totalAudioDuration <= 60 // 60s max for fill mode
+    const shouldFillContainer =
+      !isProgressiveLoadCall && totalAudioPixelWidth <= containerWidth && totalAudioDuration <= 60 // 60s max for fill mode
 
     let segmentPixelWidth: number
     let segmentDuration: number
@@ -633,20 +873,25 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       // For progressive loading, respect the requested time range exactly
       segmentDuration = endTime - startTime
       segmentPixelWidth = segmentDuration * pixelsPerSec
-      console.log(`🔧 Progressive loading mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
+      console.log(
+        `🔧 Progressive loading mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`,
+      )
     } else if (shouldFillContainer) {
       // For short audio, create one segment that fills the entire container width
       segmentPixelWidth = containerWidth
       segmentDuration = totalAudioDuration // Use full audio duration
-      console.log(`🔧 Fill container mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
+      console.log(
+        `🔧 Fill container mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`,
+      )
     } else {
       // For long audio viewport rendering, use windowing approach
       segmentPixelWidth = 15000 // 15000 pixels per segment
       segmentDuration = segmentPixelWidth / pixelsPerSec // Calculate duration based on pixel width
-      console.log(`🔧 Viewport rendering mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
+      console.log(
+        `🔧 Viewport rendering mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`,
+      )
     }
 
-    
     // Show existing segments
     if (this.segments.size > 0) {
       for (const [key, segment] of this.segments) {
@@ -655,7 +900,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     // Check coverage first to avoid duplicate work
     const uncoveredRanges = this.findUncoveredTimeRanges(startTime, endTime, segmentDuration)
-    
+
     if (uncoveredRanges.length === 0) {
       return
     }
@@ -681,23 +926,23 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         const freqStartTime = performance.now()
         const frequencies = await this.calculateFrequencies(segmentStart, segmentEnd)
         const freqEndTime = performance.now()
-        
+
         if (frequencies && frequencies.length > 0) {
           const segment: FrequencySegment = {
             startTime: segmentStart,
             endTime: segmentEnd,
             startPixel: shouldFillContainer ? 0 : segmentStart * pixelsPerSec, // Start at 0 for fill mode
             endPixel: shouldFillContainer ? containerWidth : segmentEnd * pixelsPerSec, // End at container width for fill mode
-            frequencies: frequencies
+            frequencies: frequencies,
           }
 
           this.segments.set(segmentKey, segment)
-          
+
           // Render this segment
           const renderStartTime = performance.now()
           await this.renderSegment(segment)
           const renderEndTime = performance.now()
-          
+
           // Emit progress update
           this.emitProgress()
         } else {
@@ -711,50 +956,53 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
   }
 
-  private findUncoveredTimeRanges(startTime: number, endTime: number, segmentDuration: number): Array<{start: number, end: number}> {
+  private findUncoveredTimeRanges(
+    startTime: number,
+    endTime: number,
+    segmentDuration: number,
+  ): Array<{ start: number; end: number }> {
     // Get all existing segments sorted by start time
-    const existingSegments = Array.from(this.segments.values())
-      .sort((a, b) => a.startTime - b.startTime)
-    
-    const uncoveredRanges: Array<{start: number, end: number}> = []
+    const existingSegments = Array.from(this.segments.values()).sort((a, b) => a.startTime - b.startTime)
+
+    const uncoveredRanges: Array<{ start: number; end: number }> = []
     let currentTime = startTime
-    
+
     for (const segment of existingSegments) {
       // If there's a gap before this segment
       if (currentTime < segment.startTime && currentTime < endTime) {
         const gapEnd = Math.min(segment.startTime, endTime)
         uncoveredRanges.push({
           start: currentTime,
-          end: gapEnd
+          end: gapEnd,
         })
       }
-      
+
       // Move past this segment
       currentTime = Math.max(currentTime, segment.endTime)
-      
+
       // If we've covered the requested range, stop
       if (currentTime >= endTime) {
         break
       }
     }
-    
+
     // If there's still uncovered time at the end
     if (currentTime < endTime) {
       uncoveredRanges.push({
         start: currentTime,
-        end: endTime
+        end: endTime,
       })
     }
-    
+
     return uncoveredRanges
   }
 
   private startProgressiveLoading() {
     if (this.isProgressiveLoading || !this.buffer || !this.progressiveLoading) return
-    
+
     this.isProgressiveLoading = true
     this.nextProgressiveSegmentTime = 0 // Start from the beginning
-    
+
     // Start loading after a short delay to not interfere with user interactions
     this.progressiveLoadTimeout = window.setTimeout(() => {
       this.progressiveLoadNextSegment()
@@ -776,13 +1024,15 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
     const segmentStart = this.nextProgressiveSegmentTime
     const segmentEnd = Math.min(segmentStart + segmentDuration, totalDuration)
-    
-    console.log(`📊 Progressive segment calculation: start=${segmentStart.toFixed(2)}s, end=${segmentEnd.toFixed(2)}s, duration=${segmentDuration.toFixed(2)}s`)
-    
+
+    console.log(
+      `📊 Progressive segment calculation: start=${segmentStart.toFixed(2)}s, end=${segmentEnd.toFixed(2)}s, duration=${segmentDuration.toFixed(2)}s`,
+    )
+
     // Check if this segment is already loaded
     const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`
     const isAlreadyLoaded = this.segments.has(segmentKey)
-    
+
     if (!isAlreadyLoaded) {
       try {
         console.log(`🔄 Progressive loading segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
@@ -796,10 +1046,10 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     } else {
       console.log(`⏭️ Progressive segment already loaded: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
     }
-    
+
     // Move to next segment
     this.nextProgressiveSegmentTime = segmentEnd
-    
+
     // Schedule next progressive load
     this.progressiveLoadTimeout = window.setTimeout(() => {
       this.progressiveLoadNextSegment()
@@ -817,20 +1067,20 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   /** Get the current loading progress as a percentage (0-100) */
   public getLoadingProgress(): number {
     if (!this.buffer) return 0
-    
+
     const totalDuration = this.buffer.duration
-    
+
     if (totalDuration === 0) return 100
     if (!this.isProgressiveLoading && this.segments.size === 0) return 0
-    
+
     // Calculate progress based on how far we've progressed through the audio
     const progress = Math.min(100, (this.nextProgressiveSegmentTime / totalDuration) * 100)
-    
+
     // If progressive loading is complete, return 100%
     if (!this.isProgressiveLoading && this.nextProgressiveSegmentTime >= totalDuration) {
       return 100
     }
-    
+
     return progress
   }
 
@@ -849,7 +1099,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     /**
      * FFT Implementation Priority:
      * 1. Web Worker (JavaScript FFT) - if useWebWorker=true
-     * 2. Main Thread WASM FFT - if useWebWorker=false and WASM available  
+     * 2. Main Thread WASM FFT - if useWebWorker=false and WASM available
      * 3. Main Thread JavaScript FFT - fallback
      */
 
@@ -858,7 +1108,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       try {
         const result = await this.calculateFrequenciesWithWorker(startTime, endTime)
         const totalTime = performance.now() - calcStartTime
-        console.log(`🔧 Worker FFT calculation completed in ${(totalTime).toFixed(1)}ms`)
+        console.log(`🔧 Worker FFT calculation completed in ${totalTime.toFixed(1)}ms`)
         return result
       } catch (error) {
         console.warn('Worker calculation failed, falling back to main thread:', error)
@@ -902,7 +1152,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Create promise for worker response
     const promise = new Promise<Uint8Array[][]>((resolve, reject) => {
       this.workerPromises.set(id, { resolve, reject })
-      
+
       // Set timeout to avoid hanging
       setTimeout(() => {
         if (this.workerPromises.has(id)) {
@@ -929,8 +1179,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         gainDB: this.gainDB,
         rangeDB: this.rangeDB,
         splitChannels: this.options.splitChannels || false,
-        useWasm: false // Worker always uses JavaScript FFT
-      }
+        useWasm: false, // Worker always uses JavaScript FFT
+      },
     })
 
     return promise
@@ -951,10 +1201,10 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         // Initialize WASM filter bank if not linear scale
         if (this.scale !== 'linear') {
           this.wasmFilterBank = new WasmFilterBank(
-            this.fftSamples / 2, // numFilters 
-            this.fftSamples,     // fftSize
-            sampleRate,          // sampleRate
-            this.scale           // scaleType
+            this.fftSamples / 2, // numFilters
+            this.fftSamples, // fftSize
+            sampleRate, // sampleRate
+            this.scale, // scaleType
           )
         }
         console.log('✅ WASM FFT and FilterBank initialized for main thread calculations')
@@ -986,7 +1236,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const hopSize = Math.max(minHopSize, this.fftSamples - noverlap)
 
     const frequencies: Uint8Array[][] = []
-    
+
     const fftStartTime = performance.now()
     let totalFFTs = 0
 
@@ -997,18 +1247,18 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       for (let sample = startSample; sample + this.fftSamples < endSample; sample += hopSize) {
         const segment = channelData.slice(sample, sample + this.fftSamples)
         let spectrum: Float32Array
-        
+
         // Use WASM FFT only if worker is disabled, otherwise use JS FFT
         if (!this.useWebWorker && this.isWasmAvailable && this.wasmFFT) {
           spectrum = this.wasmFFT.calculate_spectrum(segment)
-          
+
           // Apply WASM filter bank if available
           if (this.wasmFilterBank) {
             spectrum = this.wasmFilterBank.apply(spectrum)
           }
         } else if (this.fft) {
           spectrum = this.fft.calculateSpectrum(segment)
-          
+
           // Apply JS filter bank if needed
           const filterBank = this.getFilterBank(sampleRate)
           if (filterBank) {
@@ -1018,12 +1268,12 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
           console.error('No FFT available!')
           return []
         }
-        
+
         totalFFTs++
 
         // Convert to uint8 color indices
         let freqBins: Uint8Array
-        
+
         if (!this.useWebWorker && this.isWasmAvailable && this.wasmFFT) {
           // Use WASM color conversion function when WASM FFT is active
           try {
@@ -1037,15 +1287,17 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
           // Use JS color conversion
           freqBins = this.convertSpectrumToColors(spectrum)
         }
-        
+
         channelFreq.push(freqBins)
       }
       frequencies.push(channelFreq)
     }
 
     const fftEndTime = performance.now()
-    const fftType = (!this.useWebWorker && this.isWasmAvailable && this.wasmFFT) ? 'WASM' : 'JS'
-    console.log(`🔧 Main thread ${fftType} FFT calculation: ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`)
+    const fftType = !this.useWebWorker && this.isWasmAvailable && this.wasmFFT ? 'WASM' : 'JS'
+    console.log(
+      `🔧 Main thread ${fftType} FFT calculation: ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`,
+    )
 
     return frequencies
   }
@@ -1053,11 +1305,11 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private convertSpectrumToColors(spectrum: Float32Array): Uint8Array {
     const freqBins = new Uint8Array(spectrum.length)
     const gainPlusRange = this.gainDB + this.rangeDB
-    
+
     for (let j = 0; j < spectrum.length; j++) {
       const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
       const valueDB = 20 * Math.log10(magnitude)
-      
+
       if (valueDB < -gainPlusRange) {
         freqBins[j] = 0
       } else if (valueDB > -this.gainDB) {
@@ -1066,7 +1318,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         freqBins[j] = Math.round(((valueDB + this.gainDB) / this.rangeDB) * 255)
       }
     }
-    
+
     return freqBins
   }
 
@@ -1095,14 +1347,14 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     // Render frequency data to canvas with proper scaling
     for (let c = 0; c < segment.frequencies.length; c++) {
       await this.renderChannelToCanvas(
-        segment.frequencies[c], 
-        ctx, 
-        segmentWidth, 
-        this.height, 
+        segment.frequencies[c],
+        ctx,
+        segmentWidth,
+        this.height,
         c * this.height,
         freqFrom,
         freqMin,
-        freqMax
+        freqMax,
       )
     }
 
@@ -1112,14 +1364,14 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 
   private async renderChannelToCanvas(
-    channelFreq: Uint8Array[], 
-    ctx: CanvasRenderingContext2D, 
-    width: number, 
-    height: number, 
+    channelFreq: Uint8Array[],
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
     yOffset: number,
     freqFrom: number,
     freqMin: number,
-    freqMax: number
+    freqMax: number,
   ) {
     if (channelFreq.length === 0) return
 
@@ -1134,7 +1386,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
         const colorIndex = Math.min(255, Math.max(0, column[j]))
         const color = this.colorMap[colorIndex]
         const pixelIndex = ((freqBins - j - 1) * channelFreq.length + i) * 4
-        
+
         data[pixelIndex] = color[0] * 255
         data[pixelIndex + 1] = color[1] * 255
         data[pixelIndex + 2] = color[2] * 255
@@ -1154,16 +1406,10 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const bitmapSourceHeight = Math.round(freqBins * (rMax1 - rMin))
 
     // Create and draw bitmap with proper frequency scaling
-    const bitmap = await createImageBitmap(
-      imageData,
-      0,
-      bitmapSourceY,
-      channelFreq.length,
-      bitmapSourceHeight
-    )
-    
+    const bitmap = await createImageBitmap(imageData, 0, bitmapSourceY, channelFreq.length, bitmapSourceHeight)
+
     ctx.drawImage(bitmap, 0, drawY, width, drawHeight)
-    
+
     // Clean up
     if ('close' in bitmap) {
       bitmap.close()
@@ -1194,8 +1440,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
   }
 
-
-
   private _onWrapperClick = (e: MouseEvent) => {
     const rect = this.wrapper.getBoundingClientRect()
     const relativeX = e.clientX - rect.left
@@ -1211,8 +1455,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   private unitType(freq: number) {
     return freq >= 1000 ? 'kHz' : 'Hz'
   }
-
-
 
   private getLabelFrequency(index: number, labelIndex: number) {
     const scaleMin = hzToScale(this.frequencyMin, this.scale)
@@ -1325,35 +1567,35 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
 
   destroy() {
     this.unAll()
-    
+
     if (this.renderTimeout) {
       clearTimeout(this.renderTimeout)
       this.renderTimeout = null
     }
-    
+
     if (this.qualityUpdateTimeout) {
       clearTimeout(this.qualityUpdateTimeout)
       this.qualityUpdateTimeout = null
     }
-    
+
     // Stop progressive loading
     this.stopProgressiveLoading()
     this.nextProgressiveSegmentTime = 0
-    
+
     // Clean up worker
     if (this.worker) {
       this.worker.terminate()
       this.worker = null
     }
-    
+
     // Clear any pending worker promises
     for (const [id, promise] of this.workerPromises) {
       promise.reject(new Error('Plugin destroyed'))
     }
     this.workerPromises.clear()
-    
+
     this.clearAllSegments()
-    
+
     // Clean up WASM FFT
     if (this.wasmFFT) {
       try {
@@ -1364,7 +1606,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       }
       this.wasmFFT = null
     }
-    
+
     // Clean up WASM filter bank
     if (this.wasmFilterBank) {
       try {
@@ -1375,7 +1617,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       }
       this.wasmFilterBank = null
     }
-    
+
     // Clean up DOM elements properly
     if (this.canvasContainer) {
       this.canvasContainer.remove()
@@ -1389,7 +1631,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       this.labelsEl.remove()
       this.labelsEl = null
     }
-    
+
     // Reset state for potential re-initialization
     this.container = null
     this.buffer = null
@@ -1400,7 +1642,7 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     this.isRendering = false
     this.currentPosition = 0
     this.pixelsPerSecond = 0
-    
+
     super.destroy()
   }
 
@@ -1409,30 +1651,28 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     return this.wavesurfer?.getWrapper()?.offsetWidth || 0
   }
 
-
-
   private getPixelsPerSecond() {
     // Handle default case when no zoom is specified
     const minPxPerSec = this.wavesurfer?.options.minPxPerSec
     if (minPxPerSec && minPxPerSec > 0) {
       return minPxPerSec
     }
-    
+
     // For windowed mode, enforce a minimum zoom level so we never try to fit entire audio on screen
     const WINDOWED_MIN_PX_PER_SEC = 50 // At least 50 pixels per second for windowed mode
-    
+
     // Fallback: calculate based on wrapper width and audio duration
     if (this.buffer) {
       const wrapperWidth = this.getWidth()
       const calculatedPxPerSec = wrapperWidth > 0 ? wrapperWidth / this.buffer.duration : 100
-      
+
       // For windowed mode, we want to show only a small portion of audio at a time
       // Use the maximum of calculated value and our minimum to ensure reasonable zoom
       const finalPxPerSec = Math.max(calculatedPxPerSec, WINDOWED_MIN_PX_PER_SEC)
-      
+
       return finalPxPerSec
     }
-    
+
     return WINDOWED_MIN_PX_PER_SEC
   }
 
@@ -1455,4 +1695,4 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 }
 
-export default WindowedSpectrogramPlugin 
+export default WindowedSpectrogramPlugin

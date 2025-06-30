@@ -1,7 +1,7 @@
 /**
  * FFT (Fast Fourier Transform) implementation
  * Based on https://github.com/corbanbrook/dsp.js
- * 
+ *
  * Centralized FFT functionality for spectrogram plugins
  */
 
@@ -90,7 +90,7 @@ export function scaleToHz(scale: number, scaleType: 'linear' | 'logarithmic' | '
   }
 }
 
-// Filter bank functions  
+// Filter bank functions
 export function createFilterBank(
   numFilters: number,
   fftSamples: number,
@@ -102,7 +102,7 @@ export function createFilterBank(
   const filterMax = hzToScaleFunc(sampleRate / 2)
   const filterBank = Array.from({ length: numFilters }, () => Array(fftSamples / 2 + 1).fill(0))
   const scale = sampleRate / fftSamples
-  
+
   for (let i = 0; i < numFilters; i++) {
     let hz = scaleToHzFunc(filterMin + (i / numFilters) * (filterMax - filterMin))
     let j = Math.floor(hz / scale)
@@ -340,4 +340,4 @@ export declare class FFT {
 
 // Export the FFT constructor function
 export { FFT }
-export default FFT 
+export default FFT

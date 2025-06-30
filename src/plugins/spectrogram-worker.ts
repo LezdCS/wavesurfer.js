@@ -4,7 +4,7 @@
  */
 
 // Import centralized FFT functionality
-import FFT, { 
+import FFT, {
   ERB_A,
   hzToMel,
   melToHz,
@@ -15,7 +15,7 @@ import FFT, {
   hzToErb,
   erbToHz,
   createFilterBank,
-  applyFilterBank
+  applyFilterBank,
 } from '../fft.js'
 
 // Global FFT instance (reused for performance)
@@ -49,23 +49,23 @@ interface WorkerResponse {
 }
 
 // Worker message handler
-self.onmessage = function(e: MessageEvent<WorkerMessage>) {
+self.onmessage = function (e: MessageEvent<WorkerMessage>) {
   const { type, id, audioData, options } = e.data
-  
+
   if (type === 'calculateFrequencies') {
     try {
       const result = calculateFrequencies(audioData, options)
       const response: WorkerResponse = {
         type: 'frequenciesResult',
         id: id,
-        result: result
+        result: result,
       }
       self.postMessage(response)
     } catch (error) {
       const response: WorkerResponse = {
         type: 'frequenciesResult',
         id: id,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       }
       self.postMessage(response)
     }
@@ -77,8 +77,17 @@ self.onmessage = function(e: MessageEvent<WorkerMessage>) {
  */
 function calculateFrequencies(audioChannels: Float32Array[], options: WorkerMessage['options']): Uint8Array[][] {
   const {
-    startTime, endTime, sampleRate, fftSamples, windowFunc, alpha,
-    noverlap, scale, gainDB, rangeDB, splitChannels
+    startTime,
+    endTime,
+    sampleRate,
+    fftSamples,
+    windowFunc,
+    alpha,
+    noverlap,
+    scale,
+    gainDB,
+    rangeDB,
+    splitChannels,
   } = options
 
   const startSample = Math.floor(startTime * sampleRate)
@@ -93,7 +102,7 @@ function calculateFrequencies(audioChannels: Float32Array[], options: WorkerMess
   // Create filter bank based on scale (same logic as main thread)
   let filterBank: number[][] | null = null
   const numFilters = fftSamples / 2 // Same as main thread
-  
+
   switch (scale) {
     case 'mel':
       filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToMel, melToHz)
@@ -130,7 +139,7 @@ function calculateFrequencies(audioChannels: Float32Array[], options: WorkerMess
     for (let sample = startSample; sample + fftSamples < endSample; sample += hopSize) {
       const segment = channelData.slice(sample, sample + fftSamples)
       let spectrum = fft.calculateSpectrum(segment)
-      
+
       // Apply filter bank if specified (same as main thread)
       if (filterBank) {
         spectrum = applyFilterBank(spectrum, filterBank)
@@ -139,11 +148,11 @@ function calculateFrequencies(audioChannels: Float32Array[], options: WorkerMess
       // Convert to uint8 color indices
       const freqBins = new Uint8Array(spectrum.length)
       const gainPlusRange = gainDB + rangeDB
-      
+
       for (let j = 0; j < spectrum.length; j++) {
         const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
         const valueDB = 20 * Math.log10(magnitude)
-        
+
         if (valueDB < -gainPlusRange) {
           freqBins[j] = 0
         } else if (valueDB > -gainDB) {
@@ -158,4 +167,4 @@ function calculateFrequencies(audioChannels: Float32Array[], options: WorkerMess
   }
 
   return frequencies
-} 
+}
