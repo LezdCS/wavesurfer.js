@@ -116,6 +116,22 @@ export function applyFilterBank(fftPoints, filterBank) {
     }
     return logSpectrum;
 }
+// Centralized filter bank creation based on scale type
+export function createFilterBankForScale(scale, numFilters, fftSamples, sampleRate) {
+    switch (scale) {
+        case 'mel':
+            return createFilterBank(numFilters, fftSamples, sampleRate, hzToMel, melToHz);
+        case 'logarithmic':
+            return createFilterBank(numFilters, fftSamples, sampleRate, hzToLog, logToHz);
+        case 'bark':
+            return createFilterBank(numFilters, fftSamples, sampleRate, hzToBark, barkToHz);
+        case 'erb':
+            return createFilterBank(numFilters, fftSamples, sampleRate, hzToErb, erbToHz);
+        case 'linear':
+        default:
+            return null; // No filter bank for linear scale
+    }
+}
 /**
  * Calculate FFT - Based on https://github.com/corbanbrook/dsp.js
  */

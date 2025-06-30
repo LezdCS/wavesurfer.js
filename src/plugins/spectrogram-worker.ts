@@ -14,7 +14,7 @@ import FFT, {
   barkToHz,
   hzToErb,
   erbToHz,
-  createFilterBank,
+  createFilterBankForScale,
   applyFilterBank,
 } from '../fft.js'
 
@@ -33,7 +33,7 @@ interface WorkerMessage {
     windowFunc: string
     alpha?: number
     noverlap: number
-    scale: string
+    scale: 'linear' | 'logarithmic' | 'mel' | 'bark' | 'erb'
     gainDB: number
     rangeDB: number
     splitChannels: boolean
@@ -99,29 +99,9 @@ function calculateFrequencies(audioChannels: Float32Array[], options: WorkerMess
     fft = new (FFT as any)(fftSamples, sampleRate, windowFunc, alpha || 0.16)
   }
 
-  // Create filter bank based on scale (same logic as main thread)
-  let filterBank: number[][] | null = null
+  // Create filter bank based on scale using centralized function
   const numFilters = fftSamples / 2 // Same as main thread
-
-  switch (scale) {
-    case 'mel':
-      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToMel, melToHz)
-      break
-    case 'logarithmic':
-      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToLog, logToHz)
-      break
-    case 'bark':
-      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToBark, barkToHz)
-      break
-    case 'erb':
-      filterBank = createFilterBank(numFilters, fftSamples, sampleRate, hzToErb, erbToHz)
-      break
-    case 'linear':
-    default:
-      // No filter bank for linear scale
-      filterBank = null
-      break
-  }
+  const filterBank = createFilterBankForScale(scale, numFilters, fftSamples, sampleRate)
 
   // Calculate hop size
   let actualNoverlap = noverlap || Math.max(0, Math.round(fftSamples * 0.5))

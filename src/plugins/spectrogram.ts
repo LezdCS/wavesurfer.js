@@ -36,7 +36,7 @@ import FFT, {
   erbToHz,
   hzToScale,
   scaleToHz,
-  createFilterBank,
+  createFilterBankForScale,
   createMelFilterBank,
   createLogFilterBank,
   createBarkFilterBank,
@@ -917,21 +917,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       }
 
       if (!useWasmFilterBank) {
-        // Use JavaScript filter bank
-        switch (this.scale) {
-          case 'mel':
-            filterBank = createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
-            break
-          case 'logarithmic':
-            filterBank = createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
-            break
-          case 'bark':
-            filterBank = createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
-            break
-          case 'erb':
-            filterBank = createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
-            break
-        }
+        // Use JavaScript filter bank with centralized function
+        const numFilters = this.fftSamples / 2
+        filterBank = createFilterBankForScale(this.scale, numFilters, this.fftSamples, sampleRate)
       }
     }
 

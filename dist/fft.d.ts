@@ -21,6 +21,7 @@ export declare function createLogFilterBank(numLogFilters: number, fftSamples: n
 export declare function createBarkFilterBank(numBarkFilters: number, fftSamples: number, sampleRate: number): number[][];
 export declare function createErbFilterBank(numErbFilters: number, fftSamples: number, sampleRate: number): number[][];
 export declare function applyFilterBank(fftPoints: Float32Array, filterBank: number[][]): Float32Array;
+export declare function createFilterBankForScale(scale: 'linear' | 'logarithmic' | 'mel' | 'bark' | 'erb', numFilters: number, fftSamples: number, sampleRate: number): number[][] | null;
 /**
  * Calculate FFT - Based on https://github.com/corbanbrook/dsp.js
  */

@@ -24,7 +24,7 @@ import FFT, {
   erbToHz,
   hzToScale,
   scaleToHz,
-  createFilterBank,
+  createFilterBankForScale,
   applyFilterBank,
 } from '../fft.js'
 
@@ -1426,18 +1426,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 
   private getFilterBank(sampleRate: number): number[][] | null {
-    switch (this.scale) {
-      case 'mel':
-        return createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
-      case 'logarithmic':
-        return createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
-      case 'bark':
-        return createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
-      case 'erb':
-        return createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
-      default:
-        return null
-    }
+    const numFilters = this.fftSamples / 2
+    return createFilterBankForScale(this.scale, numFilters, this.fftSamples, sampleRate)
   }
 
   private _onWrapperClick = (e: MouseEvent) => {
