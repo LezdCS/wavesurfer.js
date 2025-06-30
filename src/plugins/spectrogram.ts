@@ -20,6 +20,9 @@
 
 // @ts-nocheck
 
+// Import WASM functionality
+import wasmInit, { WasmFFT, WasmFilterBank, db_to_color_indices, initSync } from '../../pkg/wavesurfer_fft.js'
+
 // Import centralized FFT functionality
 import FFT, { 
   ERB_A,
@@ -117,6 +120,8 @@ export type SpectrogramPluginOptions = {
   maxCanvasWidth?: number
   /** Performance mode: 'fast' reduces quality for better performance, 'quality' for better visuals */
   performanceMode?: 'fast' | 'quality'
+  /** Use WASM for FFT calculations when available (default: true) */
+  useWasm?: boolean
 }
 
 export type SpectrogramPluginEvents = BasePluginEvents & {
@@ -150,6 +155,13 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   private numBarkFilters: number
   private numErbFilters: number
   
+  // WASM FFT support
+  private fft: FFT | null = null
+  private wasmFFT: WasmFFT | null = null
+  private wasmFilterBank: WasmFilterBank | null = null
+  private isWasmAvailable: boolean = false
+  private useWasm: boolean = true
+  
   // Performance optimization properties
   private cachedFrequencies: Uint8Array[][] | null = null
   private cachedResampledData: Uint8Array[][] | null = null
@@ -181,6 +193,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
     this.container =
       'string' == typeof options.container ? document.querySelector(options.container) : options.container
+
+    // WASM option (enabled by default)
+    this.useWasm = options.useWasm !== false
 
     if (options.colorMap && typeof options.colorMap !== 'string') {
       if (options.colorMap.length < 256) {
@@ -270,6 +285,11 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       this.createCanvas()
     }
 
+    // Initialize WASM if enabled
+    if (this.useWasm) {
+      this.initializeWasm()
+    }
+
     // Always get fresh container reference to avoid stale references
     this.container = this.wavesurfer.getWrapper()
     this.container.appendChild(this.wrapper)
@@ -290,6 +310,26 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       setTimeout(() => {
         this.throttledRender()
       }, 0)
+    }
+  }
+
+  private initializeWasm() {
+    try {
+      // Try synchronous initialization first (works when WASM is inlined)
+      // Fallback to async initialization
+      wasmInit()
+        .then((wasmModule) => {
+          console.log('✅ WASM module initialized for spectrogram plugin:', wasmModule)
+          this.isWasmAvailable = true
+        })
+        .catch((error) => {
+          console.warn('❌ Async WASM init failed:', error.message)
+          console.log('Will use JavaScript fallback for FFT calculations')
+          this.isWasmAvailable = false
+        })
+    } catch (error) {
+      console.warn('❌ WASM FFT not available, using JavaScript fallback:', error.message)
+      this.isWasmAvailable = false
     }
   }
 
@@ -327,6 +367,28 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     this.cachedResampledData = null
     this.cachedBuffer = null
     
+    // Clean up WASM FFT
+    if (this.wasmFFT) {
+      try {
+        this.wasmFFT.free()
+        console.log('🧹 WASM FFT memory cleaned up')
+      } catch (error) {
+        console.warn('Failed to clean up WASM FFT:', error)
+      }
+      this.wasmFFT = null
+    }
+
+    // Clean up WASM filter bank
+    if (this.wasmFilterBank) {
+      try {
+        this.wasmFilterBank.free()
+        console.log('🧹 WASM FilterBank memory cleaned up')
+      } catch (error) {
+        console.warn('Failed to clean up WASM FilterBank:', error)
+      }
+      this.wasmFilterBank = null
+    }
+    
     // Clean up DOM elements properly
     this.clearCanvases()
     if (this.canvasContainer) {
@@ -347,6 +409,10 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     this.container = null
     this.isRendering = false
     this.lastZoomLevel = 0
+    this.fft = null
+    this.wasmFFT = null
+    this.wasmFilterBank = null
+    this.isWasmAvailable = false
     this.wavesurfer = null
     this.util = null
     this.options = null
@@ -370,6 +436,28 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     this.cachedBuffer = null
     this.cachedWidth = 0
     this.lastZoomLevel = 0
+    
+    // Clear WASM FFT instances to force re-initialization
+    if (this.wasmFFT) {
+      try {
+        this.wasmFFT.free()
+      } catch (error) {
+        console.warn('Failed to free WASM FFT during cache clear:', error)
+      }
+      this.wasmFFT = null
+    }
+    
+    if (this.wasmFilterBank) {
+      try {
+        this.wasmFilterBank.free()
+      } catch (error) {
+        console.warn('Failed to free WASM FilterBank during cache clear:', error)
+      }
+      this.wasmFilterBank = null
+    }
+    
+    // Clear JS FFT instance
+    this.fft = null
   }
 
   private createWrapper() {
@@ -804,23 +892,51 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       noverlap = Math.max(0, Math.round(fftSamples - uniqueSamplesPerPx))
     }
 
-    const fft = new FFT(fftSamples, sampleRate, this.windowFunc, this.alpha)
+    // Initialize FFT (WASM or JavaScript)
+    this.initializeFFT(sampleRate)
 
-    let filterBank: number[][]
-    switch (this.scale) {
-      case 'mel':
-        filterBank = createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
-        break
-      case 'logarithmic':
-        filterBank = createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
-        break
-      case 'bark':
-        filterBank = createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
-        break
-      case 'erb':
-        filterBank = createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
-        break
+    // Prepare filter bank
+    let filterBank: number[][] | null = null
+    let useWasmFilterBank = false
+
+    if (this.scale !== 'linear') {
+      if (this.isWasmAvailable && this.wasmFFT && !this.wasmFilterBank) {
+        try {
+          this.wasmFilterBank = new WasmFilterBank(
+            this.fftSamples / 2, // numFilters
+            this.fftSamples, // fftSize
+            sampleRate, // sampleRate
+            this.scale, // scaleType
+          )
+          useWasmFilterBank = true
+          console.log('✅ WASM FilterBank initialized')
+        } catch (error) {
+          console.warn('⚠️ Failed to create WASM FilterBank, using JS fallback:', error)
+          useWasmFilterBank = false
+        }
+      }
+
+      if (!useWasmFilterBank) {
+        // Use JavaScript filter bank
+        switch (this.scale) {
+          case 'mel':
+            filterBank = createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
+            break
+          case 'logarithmic':
+            filterBank = createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
+            break
+          case 'bark':
+            filterBank = createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
+            break
+          case 'erb':
+            filterBank = createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
+            break
+        }
+      }
     }
+
+    const fftStartTime = performance.now()
+    let totalFFTs = 0
 
     for (let c = 0; c < channels; c++) {
       // for each channel
@@ -830,23 +946,47 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
       while (currentOffset + fftSamples < channelData.length) {
         const segment = channelData.slice(currentOffset, currentOffset + fftSamples)
-        const array = new Uint8Array(fftSamples / 2)
-        let spectrum = fft.calculateSpectrum(segment)
-        if (filterBank) {
-          spectrum = applyFilterBank(spectrum, filterBank)
-        }
-        for (let j = 0; j < fftSamples / 2; j++) {
-          // Based on: https://manual.audacityteam.org/man/spectrogram_view.html
-          const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
-          const valueDB = 20 * Math.log10(magnitude)
-          if (valueDB < -this.gainDB - this.rangeDB) {
-            array[j] = 0
-          } else if (valueDB > -this.gainDB) {
-            array[j] = 255
-          } else {
-            array[j] = ((valueDB + this.gainDB) / this.rangeDB) * 255 + 256
+        let spectrum: Float32Array
+
+        // Use WASM FFT if available, otherwise use JavaScript FFT
+        if (this.isWasmAvailable && this.wasmFFT) {
+          spectrum = this.wasmFFT.calculate_spectrum(segment)
+
+          // Apply WASM filter bank if available
+          if (useWasmFilterBank && this.wasmFilterBank) {
+            spectrum = this.wasmFilterBank.apply(spectrum)
           }
+        } else if (this.fft) {
+          spectrum = this.fft.calculateSpectrum(segment)
+
+          // Apply JS filter bank if needed
+          if (filterBank) {
+            spectrum = applyFilterBank(spectrum, filterBank)
+          }
+        } else {
+          console.error('No FFT available!')
+          return []
         }
+
+        totalFFTs++
+
+        // Convert to uint8 color indices
+        let array: Uint8Array
+
+        if (this.isWasmAvailable && this.wasmFFT) {
+          // Use WASM color conversion function when WASM FFT is active
+          try {
+            array = db_to_color_indices(spectrum, this.gainDB || 20, this.rangeDB || 80)
+          } catch (error) {
+            console.warn('WASM color conversion failed, using JS fallback:', error)
+            // Fallback to JS conversion
+            array = this.convertSpectrumToColors(spectrum)
+          }
+        } else {
+          // Use JS color conversion
+          array = this.convertSpectrumToColors(spectrum)
+        }
+
         channelFreq.push(array)
         // channelFreq: [sample, freq]
 
@@ -856,7 +996,51 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       // frequencies: [channel, sample, freq]
     }
 
+    const fftEndTime = performance.now()
+    const fftType = this.isWasmAvailable && this.wasmFFT ? 'WASM' : 'JS'
+    console.log(
+      `🔧 Spectrogram ${fftType} FFT calculation: ${totalFFTs} FFTs in ${(fftEndTime - fftStartTime).toFixed(1)}ms`,
+    )
+
     return frequencies
+  }
+
+  private initializeFFT(sampleRate: number) {
+    // Initialize WASM FFT if available and not already initialized
+    if (this.useWasm && this.isWasmAvailable && !this.wasmFFT) {
+      try {
+        this.wasmFFT = new WasmFFT(this.fftSamples, this.windowFunc || 'hann', this.alpha)
+        console.log('✅ WASM FFT initialized for spectrogram plugin')
+      } catch (error) {
+        console.warn('⚠️ Failed to create WASM FFT, falling back to JS:', error)
+        this.isWasmAvailable = false
+      }
+    }
+
+    // Initialize JS FFT if WASM is not being used or not available
+    if (!this.isWasmAvailable && !this.fft) {
+      this.fft = new FFT(this.fftSamples, sampleRate, this.windowFunc, this.alpha)
+    }
+  }
+
+  private convertSpectrumToColors(spectrum: Float32Array): Uint8Array {
+    const array = new Uint8Array(spectrum.length)
+    const gainPlusRange = this.gainDB + this.rangeDB
+
+    for (let j = 0; j < spectrum.length; j++) {
+      // Based on: https://manual.audacityteam.org/man/spectrogram_view.html
+      const magnitude = spectrum[j] > 1e-12 ? spectrum[j] : 1e-12
+      const valueDB = 20 * Math.log10(magnitude)
+      if (valueDB < -gainPlusRange) {
+        array[j] = 0
+      } else if (valueDB > -this.gainDB) {
+        array[j] = 255
+      } else {
+        array[j] = Math.round(((valueDB + this.gainDB) / this.rangeDB) * 255)
+      }
+    }
+
+    return array
   }
 
   private freqType(freq) {

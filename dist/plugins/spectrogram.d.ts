@@ -81,6 +81,8 @@ export type SpectrogramPluginOptions = {
     maxCanvasWidth?: number;
     /** Performance mode: 'fast' reduces quality for better performance, 'quality' for better visuals */
     performanceMode?: 'fast' | 'quality';
+    /** Use WASM for FFT calculations when available (default: true) */
+    useWasm?: boolean;
 };
 export type SpectrogramPluginEvents = BasePluginEvents & {
     ready: [];
@@ -110,6 +112,11 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private numLogFilters;
     private numBarkFilters;
     private numErbFilters;
+    private fft;
+    private wasmFFT;
+    private wasmFilterBank;
+    private isWasmAvailable;
+    private useWasm;
     private cachedFrequencies;
     private cachedResampledData;
     private cachedBuffer;
@@ -126,6 +133,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     static create(options?: SpectrogramPluginOptions): SpectrogramPlugin;
     constructor(options: SpectrogramPluginOptions);
     onInit(): void;
+    private initializeWasm;
     destroy(): void;
     loadFrequenciesData(url: string | URL): Promise<void>;
     /** Clear cached frequency data to force recalculation */
@@ -143,6 +151,8 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private getWidth;
     private getWrapperWidth;
     private getFrequencies;
+    private initializeFFT;
+    private convertSpectrumToColors;
     private freqType;
     private unitType;
     private getLabelFrequency;
