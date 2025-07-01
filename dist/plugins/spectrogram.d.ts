@@ -83,6 +83,8 @@ export type SpectrogramPluginOptions = {
     performanceMode?: 'fast' | 'quality';
     /** Use WASM for FFT calculations when available (default: true) */
     useWasm?: boolean;
+    /** Use web worker for FFT calculations (default: false) */
+    useWebWorker?: boolean;
 };
 export type SpectrogramPluginEvents = BasePluginEvents & {
     ready: [];
@@ -117,6 +119,9 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private wasmFilterBank;
     private isWasmAvailable;
     private useWasm;
+    private useWebWorker;
+    private worker;
+    private workerPromises;
     private cachedFrequencies;
     private cachedResampledData;
     private cachedBuffer;
@@ -132,6 +137,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private scrollUnsubscribe;
     static create(options?: SpectrogramPluginOptions): SpectrogramPlugin;
     constructor(options: SpectrogramPluginOptions);
+    private initializeWorker;
     onInit(): void;
     private initializeWasm;
     destroy(): void;
@@ -150,6 +156,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private drawSpectrogramSegment;
     private getWidth;
     private getWrapperWidth;
+    private calculateFrequenciesWithWorker;
     private getFrequencies;
     private initializeFFT;
     private convertSpectrumToColors;

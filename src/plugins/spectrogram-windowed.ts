@@ -540,9 +540,6 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     }
 
     try {
-      // Try synchronous initialization first (works when WASM is inlined)
-
-      // Fallback to async initialization
       wasmInit()
         .then((wasmModule) => {
           console.log('✅ WASM module initialized asynchronously:', wasmModule)
