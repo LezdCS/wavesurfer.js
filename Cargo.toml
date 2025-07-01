@@ -28,3 +28,4 @@ features = [
 
 [profile.release]
 debug = false
+opt-level = "s"
