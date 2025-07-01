@@ -10,15 +10,6 @@ extern "C" {
     fn log(s: &str);
 }
 
-// Define a macro to make logging easier
-macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
-
-// Use `wee_alloc` as the global allocator for smaller binary size
-#[global_allocator]
-static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
-
 #[wasm_bindgen]
 pub struct WasmFFT {
     size: usize,

@@ -25,11 +25,11 @@ export interface InitOutput {
   readonly wasmfilterbank_new: (a: number, b: number, c: number, d: number, e: number) => [number, number, number];
   readonly wasmfilterbank_apply: (a: number, b: number, c: number) => [number, number, number, number];
   readonly db_to_color_indices: (a: number, b: number, c: number, d: number) => [number, number];
-  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
+  readonly __wbindgen_export_0: WebAssembly.Table;
   readonly __wbindgen_malloc: (a: number, b: number) => number;
   readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
-  readonly __wbindgen_export_3: WebAssembly.Table;
   readonly __externref_table_dealloc: (a: number) => void;
+  readonly __wbindgen_free: (a: number, b: number, c: number) => void;
   readonly __wbindgen_start: () => void;
 }
 
