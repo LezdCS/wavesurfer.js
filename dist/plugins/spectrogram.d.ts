@@ -81,6 +81,8 @@ export type SpectrogramPluginOptions = {
     maxCanvasWidth?: number;
     /** Performance mode: 'fast' reduces quality for better performance, 'quality' for better visuals */
     performanceMode?: 'fast' | 'quality';
+    /** Use web worker for FFT calculations (default: false) */
+    useWebWorker?: boolean;
 };
 export type SpectrogramPluginEvents = BasePluginEvents & {
     ready: [];
@@ -110,6 +112,9 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private numLogFilters;
     private numBarkFilters;
     private numErbFilters;
+    private useWebWorker;
+    private worker;
+    private workerPromises;
     private cachedFrequencies;
     private cachedResampledData;
     private cachedBuffer;
@@ -125,6 +130,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private scrollUnsubscribe;
     static create(options?: SpectrogramPluginOptions): SpectrogramPlugin;
     constructor(options: SpectrogramPluginOptions);
+    private initializeWorker;
     onInit(): void;
     destroy(): void;
     loadFrequenciesData(url: string | URL): Promise<void>;
@@ -142,6 +148,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private drawSpectrogramSegment;
     private getWidth;
     private getWrapperWidth;
+    private calculateFrequenciesWithWorker;
     private getFrequencies;
     private freqType;
     private unitType;

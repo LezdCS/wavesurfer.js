@@ -33,7 +33,7 @@ import FFT, {
   erbToHz,
   hzToScale,
   scaleToHz,
-  createFilterBank,
+  createFilterBankForScale,
   createMelFilterBank,
   createLogFilterBank,
   createBarkFilterBank,
@@ -46,6 +46,9 @@ import FFT, {
  */
 import BasePlugin, { type BasePluginEvents } from '../base-plugin.js'
 import createElement from '../dom.js'
+
+// Import the worker using rollup-plugin-web-worker-loader
+import SpectrogramWorker from 'web-worker:./spectrogram-worker.ts'
 
 export type SpectrogramPluginOptions = {
   /** Selector of element or element in which to render */
@@ -117,6 +120,8 @@ export type SpectrogramPluginOptions = {
   maxCanvasWidth?: number
   /** Performance mode: 'fast' reduces quality for better performance, 'quality' for better visuals */
   performanceMode?: 'fast' | 'quality'
+   /** Use web worker for FFT calculations (default: false) */
+   useWebWorker?: boolean
 }
 
 export type SpectrogramPluginEvents = BasePluginEvents & {
@@ -149,6 +154,11 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
   private numLogFilters: number
   private numBarkFilters: number
   private numErbFilters: number
+
+  // Web worker support
+  private useWebWorker: boolean = false
+  private worker: Worker | null = null
+  private workerPromises: Map<string, { resolve: Function; reject: Function }> = new Map()
   
   // Performance optimization properties
   private cachedFrequencies: Uint8Array[][] | null = null
@@ -181,6 +191,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
     this.container =
       'string' == typeof options.container ? document.querySelector(options.container) : options.container
+
+    // Web worker option (disabled by default)
+    this.useWebWorker = options.useWebWorker === true
 
     if (options.colorMap && typeof options.colorMap !== 'string') {
       if (options.colorMap.length < 256) {
@@ -259,6 +272,49 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
 
     this.createWrapper()
     this.createCanvas()
+
+    // Initialize worker if enabled
+    if (this.useWebWorker) {
+      this.initializeWorker()
+    }
+  }
+
+  private initializeWorker() {
+    // Skip worker initialization in SSR environments (Next.js server-side)
+    if (typeof window === 'undefined' || typeof Worker === 'undefined') {
+      console.warn('Worker not available in this environment, using main thread calculation')
+      return
+    }
+
+    try {
+      // Create worker using imported worker constructor
+      this.worker = new SpectrogramWorker()
+
+      this.worker.onmessage = (e) => {
+        const { type, id, result, error } = e.data
+
+        if (type === 'frequenciesResult') {
+          const promise = this.workerPromises.get(id)
+          if (promise) {
+            this.workerPromises.delete(id)
+            if (error) {
+              promise.reject(new Error(error))
+            } else {
+              promise.resolve(result)
+            }
+          }
+        }
+      }
+
+      this.worker.onerror = (error) => {
+        console.warn('Spectrogram worker error, falling back to main thread:', error)
+        // Fallback to main thread calculation
+        this.worker = null
+      }
+    } catch (error) {
+      console.warn('Failed to initialize worker, falling back to main thread:', error)
+      this.worker = null
+    }
   }
 
   onInit() {
@@ -322,6 +378,12 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     
     // Cancel pending bitmap operations
     this.pendingBitmaps.clear()
+
+    // Clean up worker
+    if (this.worker) {
+      this.worker.terminate()
+      this.worker = null
+    }
     
     this.cachedFrequencies = null
     this.cachedResampledData = null
@@ -480,13 +542,13 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     }
   }
 
-  private render() {
+  private async render() {
     if (this.isRendering) return
     this.isRendering = true
     
     try {
       if (this.frequenciesDataUrl) {
-        this.loadFrequenciesData(this.frequenciesDataUrl)
+        await this.loadFrequenciesData(this.frequenciesDataUrl)
       } else {
         const decodedData = this.wavesurfer?.getDecodedData()
         if (decodedData) {
@@ -495,7 +557,7 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
             this.drawSpectrogram(this.cachedFrequencies)
           } else {
             // Calculate new frequencies and cache them
-            const frequencies = this.getFrequencies(decodedData)
+            const frequencies = await this.getFrequencies(decodedData)
             this.cachedFrequencies = frequencies
             this.cachedBuffer = decodedData
             this.drawSpectrogram(frequencies)
@@ -768,7 +830,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     }).catch((error) => {
       // Clean up on error
       this.pendingBitmaps.delete(bitmapPromise)
-      console.warn('Failed to create bitmap for spectrogram:', error)
     })
   }
 
@@ -782,16 +843,88 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     return this.wavesurfer?.getWrapper()?.clientWidth || 0
   }
 
-  private getFrequencies(buffer: AudioBuffer): Uint8Array[][] {
+  private async calculateFrequenciesWithWorker(buffer: AudioBuffer): Promise<Uint8Array[][]> {
+    if (!this.worker) {
+      throw new Error('Worker not available')
+    }
+
     const fftSamples = this.fftSamples
     const channels =
       (this.options.splitChannels ?? this.wavesurfer?.options.splitChannels) ? buffer.numberOfChannels : 1
+    
+    // Calculate noverlap
+    let noverlap = this.noverlap
+    if (!noverlap) {
+      const totalWidth = this.getWidth()
+      const uniqueSamplesPerPx = buffer.length / totalWidth
+      noverlap = Math.max(0, Math.round(fftSamples - uniqueSamplesPerPx))
+    }
 
+    // Prepare audio data for worker
+    const audioData: Float32Array[] = []
+    for (let c = 0; c < channels; c++) {
+      audioData.push(buffer.getChannelData(c))
+    }
+
+    // Generate unique ID for this request
+    const id = `${Date.now()}_${Math.random()}`
+
+    // Create promise for worker response
+    const promise = new Promise<Uint8Array[][]>((resolve, reject) => {
+      this.workerPromises.set(id, { resolve, reject })
+
+      // Set timeout to avoid hanging
+      setTimeout(() => {
+        if (this.workerPromises.has(id)) {
+          this.workerPromises.delete(id)
+          reject(new Error('Worker timeout'))
+        }
+      }, 30000) // 30 second timeout
+    })
+
+    // Send message to worker
+    this.worker.postMessage({
+      type: 'calculateFrequencies',
+      id,
+      audioData,
+      options: {
+        startTime: 0,
+        endTime: buffer.duration,
+        sampleRate: buffer.sampleRate,
+        fftSamples: this.fftSamples,
+        windowFunc: this.windowFunc,
+        alpha: this.alpha,
+        noverlap,
+        scale: this.scale,
+        gainDB: this.gainDB,
+        rangeDB: this.rangeDB,
+        splitChannels: this.options.splitChannels || false,
+        useWasm: false, // Worker always uses JavaScript FFT
+      },
+    })
+
+    return promise
+  }
+
+  private async getFrequencies(buffer: AudioBuffer): Promise<Uint8Array[][]> {
     this.frequencyMax = this.frequencyMax || buffer.sampleRate / 2
+    this.buffer = buffer
 
     if (!buffer) return
 
-    this.buffer = buffer
+     // Use worker if enabled and available
+     if (this.useWebWorker && this.worker) {
+      try {
+        return await this.calculateFrequenciesWithWorker(buffer)
+      } catch (error) {
+        console.warn('Worker calculation failed, falling back to main thread:', error)
+        // Fall through to main thread calculation
+      }
+    }
+
+    const fftSamples = this.fftSamples
+    const channels =
+      (this.options.splitChannels ?? this.wavesurfer?.options.splitChannels) ? buffer.numberOfChannels : 1
 
     // This may differ from file samplerate. Browser resamples audio.
     const sampleRate = buffer.sampleRate
@@ -807,20 +940,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     const fft = new FFT(fftSamples, sampleRate, this.windowFunc, this.alpha)
 
     let filterBank: number[][]
-    switch (this.scale) {
-      case 'mel':
-        filterBank = createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
-        break
-      case 'logarithmic':
-        filterBank = createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
-        break
-      case 'bark':
-        filterBank = createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
-        break
-      case 'erb':
-        filterBank = createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
-        break
-    }
+    const numFilters = this.fftSamples / 2
+    filterBank = createFilterBankForScale(this.scale, numFilters, this.fftSamples, sampleRate)
 
     for (let c = 0; c < channels; c++) {
       // for each channel

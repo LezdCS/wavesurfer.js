@@ -22,7 +22,7 @@ import FFT, {
   erbToHz,
   hzToScale,
   scaleToHz,
-  createFilterBank,
+  createFilterBankForScale,
   applyFilterBank
 } from '../fft.js'
 
@@ -601,17 +601,14 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
       // For progressive loading, respect the requested time range exactly
       segmentDuration = endTime - startTime
       segmentPixelWidth = segmentDuration * pixelsPerSec
-      console.log(`🔧 Progressive loading mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
     } else if (shouldFillContainer) {
       // For short audio, create one segment that fills the entire container width
       segmentPixelWidth = containerWidth
       segmentDuration = totalAudioDuration // Use full audio duration
-      console.log(`🔧 Fill container mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
     } else {
       // For long audio viewport rendering, use windowing approach
       segmentPixelWidth = 15000 // 15000 pixels per segment
       segmentDuration = segmentPixelWidth / pixelsPerSec // Calculate duration based on pixel width
-      console.log(`🔧 Viewport rendering mode: duration=${segmentDuration.toFixed(1)}s, pixels=${segmentPixelWidth.toFixed(0)}px`)
     }
 
     
@@ -745,24 +742,18 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
     const segmentStart = this.nextProgressiveSegmentTime
     const segmentEnd = Math.min(segmentStart + segmentDuration, totalDuration)
     
-    console.log(`📊 Progressive segment calculation: start=${segmentStart.toFixed(2)}s, end=${segmentEnd.toFixed(2)}s, duration=${segmentDuration.toFixed(2)}s`)
-    
     // Check if this segment is already loaded
     const segmentKey = `${Math.floor(segmentStart * 10)}_${Math.floor(segmentEnd * 10)}`
     const isAlreadyLoaded = this.segments.has(segmentKey)
     
     if (!isAlreadyLoaded) {
       try {
-        console.log(`🔄 Progressive loading segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
         await this.generateSegments(segmentStart, segmentEnd)
-        console.log(`✅ Progressive loaded segment: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
       } catch (error) {
         console.warn('Progressive loading failed:', error)
         this._stopProgressiveLoading()
         return
       }
-    } else {
-      console.log(`⏭️ Progressive segment already loaded: ${segmentStart.toFixed(1)}s - ${segmentEnd.toFixed(1)}s`)
     }
     
     // Move to next segment
@@ -1080,18 +1071,8 @@ class WindowedSpectrogramPlugin extends BasePlugin<WindowedSpectrogramPluginEven
   }
 
   private getFilterBank(sampleRate: number): number[][] | null {
-    switch (this.scale) {
-      case 'mel':
-        return createFilterBank(this.numMelFilters, this.fftSamples, sampleRate, hzToMel, melToHz)
-      case 'logarithmic':
-        return createFilterBank(this.numLogFilters, this.fftSamples, sampleRate, hzToLog, logToHz)
-      case 'bark':
-        return createFilterBank(this.numBarkFilters, this.fftSamples, sampleRate, hzToBark, barkToHz)
-      case 'erb':
-        return createFilterBank(this.numErbFilters, this.fftSamples, sampleRate, hzToErb, erbToHz)
-      default:
-        return null
-    }
+    const numFilters = this.fftSamples / 2
+    return createFilterBankForScale(this.scale, numFilters, this.fftSamples, sampleRate)
   }
 
 

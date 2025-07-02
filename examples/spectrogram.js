@@ -23,6 +23,7 @@ ws.registerPlugin(
     frequencyMin: 0,
     fftSamples: 1024,
     labelsBackground: 'rgba(0, 0, 0, 0.1)',
+    useWebWorker: true,
   }),
 )
 
