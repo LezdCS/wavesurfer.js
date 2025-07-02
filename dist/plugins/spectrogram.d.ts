@@ -79,8 +79,6 @@ export type SpectrogramPluginOptions = {
     frequenciesDataUrl?: string;
     /** Maximum width of individual canvas elements in pixels (default: 30000) */
     maxCanvasWidth?: number;
-    /** Performance mode: 'fast' reduces quality for better performance, 'quality' for better visuals */
-    performanceMode?: 'fast' | 'quality';
     /** Use web worker for FFT calculations (default: false) */
     useWebWorker?: boolean;
 };
@@ -154,9 +152,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private loadLabels;
     private efficientResample;
     private resampleChannel;
-    private fastDownsample;
     private fillImageDataQuality;
-    private fillImageDataFast;
     private resample;
 }
 export default SpectrogramPlugin;

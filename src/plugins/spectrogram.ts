@@ -110,8 +110,6 @@ export type SpectrogramPluginOptions = {
   frequenciesDataUrl?: string
   /** Maximum width of individual canvas elements in pixels (default: 30000) */
   maxCanvasWidth?: number
-  /** Performance mode: 'fast' reduces quality for better performance, 'quality' for better visuals */
-  performanceMode?: 'fast' | 'quality'
    /** Use web worker for FFT calculations (default: false) */
    useWebWorker?: boolean
 }
@@ -217,19 +215,9 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       SpectrogramPlugin.MAX_CANVAS_WIDTH = options.maxCanvasWidth
     }
 
-    // Adjust performance settings only for fast mode
-    if (options.performanceMode === 'fast') {
-      this.renderThrottleMs = 100 // Slower updates for better performance
-      this.zoomThreshold = 0.2 // Less sensitive zoom detection
-      // Only reduce FFT resolution if not explicitly set
-      if (!options.fftSamples) {
-        this.fftSamples = 256 // Lower resolution for performance
-      }
-    } else {
-      // Quality mode - use good defaults
-      this.renderThrottleMs = 50
-      this.zoomThreshold = 0.05
-    }
+    // Set default performance settings
+    this.renderThrottleMs = 50
+    this.zoomThreshold = 0.05
 
     this.createWrapper()
     this.createCanvas()
@@ -744,16 +732,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     const imageData = new ImageData(segmentWidth, bitmapHeight)
     const data = imageData.data
 
-    // Choose rendering method based on performance mode
-    const isPerformanceMode = this.options.performanceMode === 'fast'
-    
-    if (isPerformanceMode && bitmapHeight > 1024) {
-      // For performance mode with very high frequency resolution, use reduced vertical resolution
-      this.fillImageDataFast(data, segmentPixels, segmentWidth, bitmapHeight)
-    } else {
-      // Standard quality rendering (default behavior)
-      this.fillImageDataQuality(data, segmentPixels, segmentWidth, bitmapHeight)
-    }
+    // Always use quality rendering - users want accurate spectrograms
+    this.fillImageDataQuality(data, segmentPixels, segmentWidth, bitmapHeight)
 
     // Calculate frequency scaling
     const rMin = hzToScale(freqMin, this.scale) / hzToScale(freqFrom, this.scale)
@@ -1030,14 +1010,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     }
     
     const ratio = oldColumns / targetWidth
-    const isPerformanceMode = this.options.performanceMode === 'fast'
     
-    // Use aggressive optimization only in performance mode with extreme ratios
-    if (isPerformanceMode && ratio > 8) {
-      return this.fastDownsample(oldMatrix, targetWidth, freqBins)
-    }
-    
-    // Standard resampling for good quality
+    // Always use quality resampling for accurate spectrograms
     const newMatrix = new Array(targetWidth)
     
     if (ratio >= 1) {
@@ -1074,8 +1048,8 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         
         const column = new Uint8Array(freqBins)
         
-        if (weight === 0 || leftIndex === rightIndex || isPerformanceMode) {
-          // Exact match, at boundary, or performance mode - use nearest neighbor
+        if (weight === 0 || leftIndex === rightIndex) {
+          // Exact match or at boundary - use nearest neighbor
           column.set(oldMatrix[leftIndex])
         } else {
           // Linear interpolation for better quality
@@ -1090,38 +1064,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
       }
     }
 
-    return newMatrix
-  }
-
-  private fastDownsample(oldMatrix: Uint8Array[], targetWidth: number, freqBins: number): Uint8Array[] {
-    // For extreme downsampling, use stride-based sampling with some averaging
-    const ratio = oldMatrix.length / targetWidth
-    const newMatrix = new Array(targetWidth)
-    
-    for (let i = 0; i < targetWidth; i++) {
-      const start = Math.floor(i * ratio)
-      const end = Math.min(Math.floor((i + 1) * ratio), oldMatrix.length)
-      const sampleCount = Math.min(4, end - start) // Limit averaging to reduce computation
-      
-      const column = new Uint8Array(freqBins)
-      
-      if (sampleCount === 1) {
-        // Single sample
-        column.set(oldMatrix[start])
-      } else {
-        // Average a few samples for better quality
-        for (let k = 0; k < freqBins; k++) {
-          let sum = 0
-          for (let j = start; j < start + sampleCount; j++) {
-            sum += oldMatrix[j][k]
-          }
-          column[k] = Math.round(sum / sampleCount)
-        }
-      }
-      
-      newMatrix[i] = column
-    }
-    
     return newMatrix
   }
 
@@ -1140,29 +1082,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         data[pixelIndex + 1] = color[1] * 255
         data[pixelIndex + 2] = color[2] * 255
         data[pixelIndex + 3] = color[3] * 255
-      }
-    }
-  }
-
-  private fillImageDataFast(data: Uint8ClampedArray, segmentPixels: Uint8Array[], segmentWidth: number, bitmapHeight: number): void {
-    // Fast rendering - skip every other row for better performance
-    const colorMap = this.colorMap
-    const step = Math.max(1, Math.floor(bitmapHeight / 256)) // Adaptive step size
-    
-    for (let i = 0; i < segmentWidth; i++) {
-      const column = segmentPixels[i]
-      for (let j = 0; j < bitmapHeight; j += step) {
-        const colorIndex = column[j]
-        const color = colorMap[colorIndex]
-        
-        // Fill multiple rows with the same data for smoothing
-        for (let k = 0; k < step && j + k < bitmapHeight; k++) {
-          const pixelIndex = ((bitmapHeight - j - k - 1) * segmentWidth + i) * 4
-          data[pixelIndex] = color[0] * 255
-          data[pixelIndex + 1] = color[1] * 255
-          data[pixelIndex + 2] = color[2] * 255
-          data[pixelIndex + 3] = color[3] * 255
-        }
       }
     }
   }
