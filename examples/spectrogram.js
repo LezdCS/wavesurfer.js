@@ -1,9 +1,4 @@
 // Spectrogram plugin example
-// 
-// This example demonstrates how to use the WaveSurfer.js Spectrogram plugin
-// to visualize audio frequency content over time. The spectrogram shows
-// frequency intensity using color mapping, where brighter colors indicate
-// stronger frequency components.
 
 import WaveSurfer from 'wavesurfer.js'
 import Spectrogram from 'wavesurfer.js/dist/plugins/spectrogram.esm.js'
@@ -94,6 +89,12 @@ ws.on('spectrogram-click', (relativeX) => {
   
   <!-- Configuration Options -->
   <div style="margin-top: 20px; padding: 15px; border-radius: 8px;">
+    <div style=" border: 1px solid #ffeaa7; border-radius: 6px; padding: 12px; margin-bottom: 15px;">
+      <strong>⚠️ Important Note:</strong> For audio files that require scrolling (longer than the container width), 
+      you <strong>MUST</strong> set a <code>minPxPerSec</code> value in the WaveSurfer configuration to ensure 
+      proper spectrogram rendering. Without this, the spectrogram may not display correctly.
+    </div>
+    
     <h3>Spectrogram Settings</h3>
     
     <h4>Visual Options</h4>
@@ -129,7 +130,7 @@ ws.on('spectrogram-click', (relativeX) => {
     </ul>
     
     <p style="margin-top: 15px; font-size: 14px;">
-      📖 <a href="https://wavesurfer.xyz/docs/modules/plugins_spectrogram" target="_blank">Full Documentation</a>
+      📖 <a href="https://wavesurfer.xyz/docs/modules/plugins_spectrogram">Full Documentation</a>
     </p>
   </div>
 </html>
