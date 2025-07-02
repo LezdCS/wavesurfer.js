@@ -128,6 +128,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private pendingBitmaps;
     private isScrollable;
     private scrollUnsubscribe;
+    private _onWrapperClick;
     static create(options?: SpectrogramPluginOptions): SpectrogramPlugin;
     constructor(options: SpectrogramPluginOptions);
     private initializeWorker;
@@ -150,11 +151,7 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private getWrapperWidth;
     private calculateFrequenciesWithWorker;
     private getFrequencies;
-    private freqType;
-    private unitType;
-    private getLabelFrequency;
     private loadLabels;
-    private _onWrapperClick;
     private efficientResample;
     private resampleChannel;
     private fastDownsample;
