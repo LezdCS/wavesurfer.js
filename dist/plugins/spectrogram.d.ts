@@ -153,6 +153,5 @@ declare class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, Spec
     private efficientResample;
     private resampleChannel;
     private fillImageDataQuality;
-    private resample;
 }
 export default SpectrogramPlugin;

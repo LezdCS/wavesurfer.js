@@ -28,7 +28,6 @@ interface WorkerMessage {
     gainDB: number
     rangeDB: number
     splitChannels: boolean
-    useWasm?: boolean // Note: Worker always uses JavaScript FFT regardless of this flag
   }
 }
 

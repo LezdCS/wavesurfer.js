@@ -840,7 +840,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         gainDB: this.gainDB,
         rangeDB: this.rangeDB,
         splitChannels: this.options.splitChannels || false,
-        useWasm: false, // Worker always uses JavaScript FFT
       },
     })
 
@@ -994,8 +993,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
     }
   }
 
-
-
   private efficientResample(frequenciesData: Uint8Array[][], targetWidth: number): Uint8Array[][] {
     return frequenciesData.map(channelFreq => this.resampleChannel(channelFreq, targetWidth))
   }
@@ -1084,11 +1081,6 @@ class SpectrogramPlugin extends BasePlugin<SpectrogramPluginEvents, SpectrogramP
         data[pixelIndex + 3] = color[3] * 255
       }
     }
-  }
-
-  private resample(oldMatrix: Uint8Array[]): Uint8Array[] {
-    // Legacy method - kept for compatibility
-    return this.resampleChannel(oldMatrix, this.getWidth())
   }
 }
 
